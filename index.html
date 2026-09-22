@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>가위바위보 아레나 (배팅 & 대전)</title>
+    <meta name="description" content="계정, 코인 배팅, 대전방이 있는 가위바위보 게임">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="bg-orbs">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+    </div>
+
+    <!-- ===== 연승 알림 배너 ===== -->
+    <div class="streak-banner" id="streak-banner">
+        <span class="streak-text" id="streak-text">🔥 3연승 중!</span>
+    </div>
+
+    <!-- ===== AUTH SCREEN (로그인 / 회원가입) ===== -->
+    <div class="screen active" id="screen-auth">
+        <div class="auth-container">
+            <div class="auth-logo">
+                <span class="auth-logo-icon">⚔️</span>
+                <h1 class="auth-title">가위바위보<br><span class="auth-title-accent">아레나</span></h1>
+                <p class="auth-subtitle">배팅하고, 대결하고, 승리하세요!</p>
+            </div>
+            <div class="auth-card glass-card">
+                <div class="auth-tabs">
+                    <button class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">로그인</button>
+                    <button class="auth-tab" id="tab-signup" onclick="switchAuthTab('signup')">회원가입</button>
+                </div>
+                <!-- Login Form -->
+                <form class="auth-form" id="form-login" onsubmit="handleLogin(event)">
+                    <div class="input-group">
+                        <label for="login-id">아이디</label>
+                        <input type="text" id="login-id" placeholder="아이디를 입력하세요" required autocomplete="username">
+                    </div>
+                    <div class="input-group">
+                        <label for="login-pw">비밀번호</label>
+                        <input type="password" id="login-pw" placeholder="비밀번호를 입력하세요" required
+                            autocomplete="current-password">
+                    </div>
+                    <button type="submit" class="btn-primary" id="btn-login">로그인</button>
+                </form>
+                <!-- Signup Form -->
+                <form class="auth-form hidden" id="form-signup" onsubmit="handleSignup(event)">
+                    <div class="input-group">
+                        <label for="signup-id">아이디</label>
+                        <input type="text" id="signup-id" placeholder="4자 이상 입력" required minlength="4"
+                            autocomplete="username">
+                    </div>
+                    <div class="input-group">
+                        <label for="signup-nickname">닉네임</label>
+                        <input type="text" id="signup-nickname" placeholder="게임에서 사용할 이름" required minlength="2">
+                    </div>
+                    <div class="input-group">
+                        <label for="signup-pw">비밀번호</label>
+                        <input type="password" id="signup-pw" placeholder="6자 이상 입력" required minlength="6"
+                            autocomplete="new-password">
+                    </div>
+                    <div class="input-group">
+                        <label for="signup-pw2">비밀번호 확인</label>
+                        <input type="password" id="signup-pw2" placeholder="비밀번호를 다시 입력" required minlength="6"
+                            autocomplete="new-password">
+                    </div>
+                    <button type="submit" class="btn-primary" id="btn-signup">가입하기</button>
+                </form>
+                <div class="auth-error hidden" id="auth-error"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== LOBBY SCREEN (메인 로비) ===== -->
+    <div class="screen" id="screen-lobby">
+        <header class="top-bar">
+            <div class="top-bar-left">
+                <span class="top-bar-logo">⚔️</span>
+                <span class="top-bar-title">아레나</span>
+            </div>
+            <div class="top-bar-center">
+                <div class="coin-display">
+                    <span class="coin-icon">🪙</span>
+                    <span class="coin-amount" id="coin-amount">1,000</span>
+                </div>
+            </div>
+            <div class="top-bar-right">
+                <span class="user-name" id="user-name">유저</span>
+                <button class="btn-icon" onclick="logout()" title="로그아웃">🚪</button>
+            </div>
+        </header>
+
+        <!-- Daily Bonus Banner -->
+        <div class="daily-bonus hidden" id="daily-bonus">
+            <div class="daily-bonus-content">
+                <span class="daily-bonus-icon">🎁</span>
+                <div>
+                    <div class="daily-bonus-title">일일 출석 보너스!</div>
+                    <div class="daily-bonus-text">1,000 코인이 지급되었습니다!</div>
+                </div>
+            </div>
+            <button class="btn-bonus-close" onclick="closeDailyBonus()">받기</button>
+        </div>
+
+        <div class="lobby-content">
+            <div class="lobby-grid">
+                <!-- VS Computer -->
+                <button class="lobby-card" onclick="showScreen('screen-bet')">
+                    <div class="lobby-card-icon">🤖</div>
+                    <div class="lobby-card-title">컴퓨터 대전</div>
+                    <div class="lobby-card-desc">AI와 배팅 대결!</div>
+                    <div class="lobby-card-arrow">→</div>
+                </button>
+                <!-- VS Player -->
+                <button class="lobby-card" onclick="showScreen('screen-rooms')">
+                    <div class="lobby-card-icon">👥</div>
+                    <div class="lobby-card-title">유저 대전방</div>
+                    <div class="lobby-card-desc">대전방 만들기 & 2인 플레이</div>
+                    <div class="lobby-card-arrow">→</div>
+                </button>
+                <!-- Profile -->
+                <button class="lobby-card" onclick="showScreen('screen-profile')">
+                    <div class="lobby-card-icon">👤</div>
+                    <div class="lobby-card-title">내 프로필</div>
+                    <div class="lobby-card-desc">내 전적 & 승률 통계</div>
+                    <div class="lobby-card-arrow">→</div>
+                </button>
+                <!-- Ranking -->
+                <button class="lobby-card" onclick="showScreen('screen-ranking')">
+                    <div class="lobby-card-icon">🏆</div>
+                    <div class="lobby-card-title">코인 랭킹</div>
+                    <div class="lobby-card-desc">코인 부자 TOP 10</div>
+                    <div class="lobby-card-arrow">→</div>
+                </button>
+                <!-- Global Chat -->
+                <button class="lobby-card" onclick="showScreen('screen-chat')">
+                    <div class="lobby-card-icon">💬</div>
+                    <div class="lobby-card-title">전체 광장 채팅</div>
+                    <div class="lobby-card-desc">아레나 플레이어 실시간 소통</div>
+                    <div class="lobby-card-arrow">→</div>
+                </button>
+                <!-- Admin Only Card -->
+                <button class="lobby-card admin-card hidden" id="admin-lobby-card" onclick="showScreen('screen-admin')">
+                    <div class="lobby-card-icon">⚙️</div>
+                    <div class="lobby-card-title">관리자 대시보드</div>
+                    <div class="lobby-card-desc">계정/대전방 관리 & 코인 지급</div>
+                    <div class="lobby-card-arrow">→</div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== BET SCREEN (배팅 설정) ===== -->
+    <div class="screen" id="screen-bet">
+        <header class="top-bar">
+            <button class="btn-back" onclick="showScreen('screen-lobby')">← 로비</button>
+            <div class="coin-display">
+                <span class="coin-icon">🪙</span>
+                <span class="coin-amount" id="bet-coin-display">1,000</span>
+            </div>
+        </header>
+        <div class="bet-container">
+            <h2 class="bet-title">💰 코인 배팅</h2>
+            <p class="bet-subtitle">승리 시 배팅 금액의 <span class="highlight-green">2배</span> 획득!</p>
+            <div class="bet-amount-display">
+                <span class="bet-amount-value" id="bet-amount-value">100</span>
+                <span class="bet-amount-label">코인</span>
+            </div>
+            <div class="bet-presets">
+                <button class="bet-preset" onclick="setBet(100)">100</button>
+                <button class="bet-preset" onclick="setBet(500)">500</button>
+                <button class="bet-preset" onclick="setBet(1000)">1,000</button>
+                <button class="bet-preset" onclick="setBet(5000)">5,000</button>
+                <button class="bet-preset bet-preset-allin" onclick="setBetAll()">🔥 올인</button>
+            </div>
+            <div class="bet-custom">
+                <input type="number" id="bet-custom-input" placeholder="직접 입력" min="10" step="10">
+                <button class="btn-sm" onclick="setBetCustom()">적용</button>
+            </div>
+            <button class="btn-primary btn-play" onclick="startComputerGame()">⚔️ 대전 시작!</button>
+        </div>
+    </div>
+
+    <!-- ===== GAME SCREEN (컴퓨터 대전 경기장) ===== -->
+    <div class="screen" id="screen-game">
+        <header class="top-bar">
+            <button class="btn-back" onclick="showScreen('screen-lobby')">← 나가기</button>
+            <div class="game-bet-info">
+                <span class="coin-icon">🪙</span>
+                <span id="game-bet-amount">100</span> 배팅 중
+            </div>
+        </header>
+        <div class="game-container">
+            <div class="arena">
+                <div class="arena-side player-side">
+                    <div class="arena-label" id="game-player-name">나</div>
+                    <div class="arena-hand" id="game-player-hand">❓</div>
+                </div>
+                <div class="arena-vs">
+                    <div class="clash-effect" id="game-clash">💥</div>
+                    <span class="vs-text">VS</span>
+                </div>
+                <div class="arena-side computer-side">
+                    <div class="arena-label">컴퓨터</div>
+                    <div class="arena-hand" id="game-opponent-hand">❓</div>
+                </div>
+            </div>
+
+            <div class="game-result-container">
+                <div class="result-text" id="game-result-text">선택지를 클릭하세요!</div>
+                <div class="game-result-coins" id="game-result-coins"></div>
+            </div>
+
+            <div class="game-choices" id="game-choices">
+                <div class="choices-row">
+                    <button class="choice-btn" onclick="makeChoice('scissors')">
+                        <span class="choice-emoji">✌️</span>
+                        <span class="choice-name">가위</span>
+                        <div class="choice-glow"></div>
+                    </button>
+                    <button class="choice-btn" onclick="makeChoice('rock')">
+                        <span class="choice-emoji">✊</span>
+                        <span class="choice-name">바위</span>
+                        <div class="choice-glow"></div>
+                    </button>
+                    <button class="choice-btn" onclick="makeChoice('paper')">
+                        <span class="choice-emoji">🖐️</span>
+                        <span class="choice-name">보</span>
+                        <div class="choice-glow"></div>
+                    </button>
+                </div>
+            </div>
+
+            <div class="game-actions hidden" id="game-actions">
+                <button class="btn-primary" onclick="playAgain()">🔄 한 판 더</button>
+                <button class="btn-secondary" onclick="showScreen('screen-lobby')">🏠 로비로</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== ROOMS SCREEN (2인 대전방) ===== -->
+    <div class="screen" id="screen-rooms">
+        <header class="top-bar">
+            <button class="btn-back" onclick="showScreen('screen-lobby')">← 뒤로</button>
+            <div class="coin-display">
+                <span class="coin-icon">🪙</span>
+                <span class="coin-amount" id="rooms-coin-display">1,000</span>
+            </div>
+        </header>
+        <div class="rooms-container">
+            <div class="rooms-header">
+                <h2 class="rooms-title">👥 2인 대전방</h2>
+                <button class="btn-create-room" onclick="showCreateRoom()">+ 방 만들기</button>
+            </div>
+
+            <!-- Modal -->
+            <div class="create-room-modal hidden" id="create-room-modal">
+                <div class="glass-card modal-card">
+                    <h3>🏠 대전방 만들기</h3>
+                    <div class="input-group">
+                        <label for="room-name-input">방 제목</label>
+                        <input type="text" id="room-name-input" placeholder="즐거운 대결 한 판!" required>
+                    </div>
+                    <div class="input-group">
+                        <label>배팅 금액 선택</label>
+                        <div class="room-bet-presets">
+                            <button class="bet-preset" onclick="setRoomBet(100)">100</button>
+                            <button class="bet-preset" onclick="setRoomBet(500)">500</button>
+                            <button class="bet-preset" onclick="setRoomBet(1000)">1,000</button>
+                        </div>
+                        <div class="room-bet-display">설정 배팅: <span id="room-bet-value">500</span> 🪙</div>
+                    </div>
+                    <div class="modal-actions">
+                        <button class="btn-primary" onclick="createRoom()">방 생성</button>
+                        <button class="btn-secondary" onclick="hideCreateRoom()">취소</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="room-list" id="room-list">
+                <div class="room-empty">생성된 대전방이 없습니다.<br>방을 만들어 다른 플레이어를 기다려보세요!</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== PVP GAME SCREEN (2인 대전 진행) ===== -->
+    <div class="screen" id="screen-pvp">
+        <header class="top-bar">
+            <button class="btn-back" onclick="exitRoom()">← 방 나가기</button>
+            <div class="game-bet-info">
+                <span class="coin-icon">🪙</span>
+                <span id="pvp-bet-amount">500</span> 배팅 대결
+            </div>
+        </header>
+        <div class="pvp-container">
+            <!-- Waiting Phase (플레이어 대기) -->
+            <div class="pvp-phase hidden" id="pvp-phase-waiting">
+                <div class="pvp-pass-screen">
+                    <span class="pvp-pass-icon animate-pulse">⏳</span>
+                    <h2>상대 플레이어 대기 중...</h2>
+                    <p>다른 플레이어가 이 방에 입장할 때까지 잠시만 기다려주세요!</p>
+                    <p class="pvp-turn-hint">상대가 입장하면 대결이 자동으로 시작됩니다 ⚔️</p>
+                </div>
+            </div>
+
+            <!-- P1 Turn -->
+            <div class="pvp-phase" id="pvp-phase-p1">
+                <div class="pvp-turn-banner">
+                    <span class="pvp-turn-icon">🎮</span>
+                    <h2 class="pvp-turn-name" id="pvp-p1-name">P1</h2>
+                    <p class="pvp-turn-text">님의 선택 차례입니다</p>
+                    <p class="pvp-turn-hint">비밀스럽게 하나를 선택해주세요 🤫</p>
+                </div>
+                <div class="choices-row">
+                    <button class="choice-btn" onclick="pvpChoice(1, 'scissors')">
+                        <span class="choice-emoji">✌️</span>
+                        <span class="choice-name">가위</span>
+                    </button>
+                    <button class="choice-btn" onclick="pvpChoice(1, 'rock')">
+                        <span class="choice-emoji">✊</span>
+                        <span class="choice-name">바위</span>
+                    </button>
+                    <button class="choice-btn" onclick="pvpChoice(1, 'paper')">
+                        <span class="choice-emoji">🖐️</span>
+                        <span class="choice-name">보</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Device Pass -->
+            <div class="pvp-phase hidden" id="pvp-phase-pass">
+                <div class="pvp-pass-screen">
+                    <span class="pvp-pass-icon">📱</span>
+                    <h2>기기를 넘겨주세요!</h2>
+                    <p><span id="pvp-p2-name-pass">P2</span>님에게 순서를 넘겨주세요.</p>
+                    <button class="btn-primary" onclick="showP2Phase()">✅ 준비 완료</button>
+                </div>
+            </div>
+
+            <!-- P2 Turn -->
+            <div class="pvp-phase hidden" id="pvp-phase-p2">
+                <div class="pvp-turn-banner">
+                    <span class="pvp-turn-icon">🎮</span>
+                    <h2 class="pvp-turn-name" id="pvp-p2-name">P2</h2>
+                    <p class="pvp-turn-text">님의 선택 차례입니다</p>
+                </div>
+                <div class="choices-row">
+                    <button class="choice-btn" onclick="pvpChoice(2, 'scissors')">
+                        <span class="choice-emoji">✌️</span>
+                        <span class="choice-name">가위</span>
+                    </button>
+                    <button class="choice-btn" onclick="pvpChoice(2, 'rock')">
+                        <span class="choice-emoji">✊</span>
+                        <span class="choice-name">바위</span>
+                    </button>
+                    <button class="choice-btn" onclick="pvpChoice(2, 'paper')">
+                        <span class="choice-emoji">🖐️</span>
+                        <span class="choice-name">보</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- PVP Result -->
+            <div class="pvp-phase hidden" id="pvp-phase-result">
+                <div class="arena">
+                    <div class="arena-side player-side">
+                        <div class="arena-label" id="pvp-result-p1-name">P1</div>
+                        <div class="arena-hand" id="pvp-result-p1-hand">✊</div>
+                    </div>
+                    <div class="arena-vs">
+                        <div class="clash-effect show" id="pvp-clash">💥</div>
+                    </div>
+                    <div class="arena-side computer-side">
+                        <div class="arena-label" id="pvp-result-p2-name">P2</div>
+                        <div class="arena-hand" id="pvp-result-p2-hand">✌️</div>
+                    </div>
+                </div>
+                <div class="game-result-container">
+                    <div class="result-text" id="pvp-result-text"></div>
+                    <div class="game-result-coins" id="pvp-result-coins"></div>
+                </div>
+                <div class="game-actions">
+                    <button class="btn-primary" onclick="pvpRematch()">🔄 리매치</button>
+                    <button class="btn-secondary" onclick="endPvp()">🏠 로비로</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== PROFILE SCREEN (내 프로필) ===== -->
+    <div class="screen" id="screen-profile">
+        <header class="top-bar">
+            <button class="btn-back" onclick="showScreen('screen-lobby')">← 뒤로</button>
+            <span class="top-bar-title">내 프로필</span>
+        </header>
+        <div class="profile-container">
+            <div class="profile-header glass-card">
+                <div class="profile-avatar" id="profile-avatar">👤</div>
+                <div class="profile-info">
+                    <h2 class="profile-nickname" id="profile-nickname">플레이어</h2>
+                    <p class="profile-id" id="profile-id">@user</p>
+                </div>
+                <div class="profile-coins">
+                    <span class="coin-icon">🪙</span>
+                    <span class="profile-coins-value" id="profile-coins">1,000</span>
+                </div>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-card glass-card">
+                    <div class="stat-value" id="stat-total">0</div>
+                    <div class="stat-label">총 대전</div>
+                </div>
+                <div class="stat-card glass-card stat-win">
+                    <div class="stat-value" id="stat-wins">0</div>
+                    <div class="stat-label">승리</div>
+                </div>
+                <div class="stat-card glass-card stat-lose">
+                    <div class="stat-value" id="stat-losses">0</div>
+                    <div class="stat-label">패배</div>
+                </div>
+                <div class="stat-card glass-card stat-draw">
+                    <div class="stat-value" id="stat-draws">0</div>
+                    <div class="stat-label">무승부</div>
+                </div>
+            </div>
+            <div class="winrate-bar glass-card">
+                <div class="winrate-label">승률</div>
+                <div class="winrate-track">
+                    <div class="winrate-fill" id="winrate-fill" style="width: 0%"></div>
+                </div>
+                <div class="winrate-value" id="winrate-value">0%</div>
+            </div>
+            <div class="profile-history glass-card">
+                <h3>전적 기록</h3>
+                <div class="history-list" id="profile-history-list">
+                    <div class="history-empty">기록이 존재하지 않습니다</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== RANKING SCREEN (코인 랭킹) ===== -->
+    <div class="screen" id="screen-ranking">
+        <header class="top-bar">
+            <button class="btn-back" onclick="showScreen('screen-lobby')">← 뒤로</button>
+            <span class="top-bar-title">🏆 코인 랭킹</span>
+        </header>
+        <div class="ranking-container">
+            <div class="ranking-list" id="ranking-list">
+                <div class="history-empty">등록된 유저 정보가 없습니다.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== CHAT SCREEN (전체 광장 채팅) ===== -->
+    <div class="screen" id="screen-chat">
+        <header class="top-bar">
+            <button class="btn-back" onclick="showScreen('screen-lobby')">← 뒤로</button>
+            <span class="top-bar-title">💬 전체 광장 채팅</span>
+        </header>
+        <div class="chat-container">
+            <div class="chat-box glass-card" id="chat-box">
+                <!-- 동적으로 채팅 메시지 노출 -->
+            </div>
+            <form class="chat-input-row" onsubmit="sendChatMessage(event)">
+                <input type="text" id="chat-input" placeholder="메시지를 입력하세요 (예: 한 판 하실 분?)" required autocomplete="off">
+                <button type="submit" class="btn-primary btn-sm">전송</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ===== ADMIN DASHBOARD SCREEN (관리자 전용 대시보드) ===== -->
+    <div class="screen" id="screen-admin">
+        <header class="top-bar">
+            <button class="btn-back" onclick="showScreen('screen-lobby')">← 뒤로</button>
+            <span class="top-bar-title">⚙️ 관리자 제어판</span>
+        </header>
+        <div class="admin-container">
+            <div class="admin-header glass-card">
+                <h2>👑 관리자 계정 모드</h2>
+                <p>유저 계정 삭제, 대전방 강제 삭제, 닉네임 변경 및 코인 수정을 수행할 수 있습니다.</p>
+            </div>
+
+            <div class="admin-section-title">🏠 개설된 대전방 목록 (강제 삭제)</div>
+            <div class="admin-room-list" id="admin-room-list">
+                <!-- 동적으로 생성된 방 목록 노출 -->
+            </div>
+
+            <div class="admin-section-title">👤 등록된 유저 계정 목록</div>
+            <div class="admin-user-list" id="admin-user-list">
+                <!-- 동적으로 관리자 유저 카드 리스트 생성 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== TOAST (알림) ===== -->
+    <div class="toast hidden" id="toast">
+        <span class="toast-text" id="toast-text"></span>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
