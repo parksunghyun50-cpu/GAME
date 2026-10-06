@@ -113,6 +113,8 @@ function showScreen(screenId) {
         renderAdminDashboard();
     } else if (screenId === 'screen-snail-race') {
         renderSnailRaceUI();
+    } else if (screenId === 'screen-fishing') {
+        renderFishingUI();
     }
 }
 
@@ -2014,6 +2016,364 @@ function startSnailRace() {
             }, 300);
         }
     }, 180);
+}
+
+// ===== FISHING SYSTEM DATA & LOGIC (아레나 낚시터) =====
+const FISHING_RODS = [
+    {
+        id: 'rod_wood',
+        name: '🪵 나무 낚시대',
+        price: 0,
+        waitTime: 3500,
+        rareBonus: 0,
+        priceMult: 1.0,
+        bg: 'linear-gradient(135deg, #795548, #4e342e)',
+        desc: '기본형 낚시대. 입질 속도가 느리지만 차분히 낚을 수 있습니다.'
+    },
+    {
+        id: 'rod_silver',
+        name: '🥈 은빛 낚시대',
+        price: 3000,
+        waitTime: 2500,
+        rareBonus: 10,
+        priceMult: 1.15,
+        bg: 'linear-gradient(135deg, #9e9e9e, #616161)',
+        desc: '은빛으로 빛나는 튼튼한 낚시대. 희귀 이상 획득 확률 +10%, 판매가 1.15배'
+    },
+    {
+        id: 'rod_gold',
+        name: '🥇 황금 낚시대',
+        price: 15000,
+        waitTime: 1800,
+        rareBonus: 25,
+        priceMult: 1.35,
+        bg: 'linear-gradient(135deg, #ffb300, #ff6f00)',
+        desc: '황금 가공 낚시대! 입질 속도 대폭 감소, 희귀+ 확률 +25%, 판매가 1.35배'
+    },
+    {
+        id: 'rod_legend',
+        name: '👑 전설의 찌 낚시대',
+        price: 50000,
+        waitTime: 1200,
+        rareBonus: 45,
+        priceMult: 1.7,
+        bg: 'linear-gradient(135deg, #e91e63, #9c27b0)',
+        desc: '전설의 입질을 불러오는 보물 낚시대! 전설 확률 대폭 상승, 판매가 1.7배!'
+    }
+];
+
+const FISH_TYPES = [
+    // 일반 (Common - ~50%)
+    { name: '피라미', grade: '일반', gradeColor: '#b0bec5', basePrice: 150, minSize: 8, maxSize: 18, emoji: '🐟' },
+    { name: '붕어', grade: '일반', gradeColor: '#b0bec5', basePrice: 300, minSize: 15, maxSize: 30, emoji: '🐟' },
+    { name: '잉어', grade: '일반', gradeColor: '#b0bec5', basePrice: 500, minSize: 25, maxSize: 50, emoji: '🐟' },
+    
+    // 희귀 (Rare - ~30%)
+    { name: '연어', grade: '희귀', gradeColor: '#00e5ff', basePrice: 1200, minSize: 40, maxSize: 80, emoji: '🐠' },
+    { name: '광어', grade: '희귀', gradeColor: '#00e5ff', basePrice: 2500, minSize: 35, maxSize: 70, emoji: '🐠' },
+    { name: '돔', grade: '희귀', gradeColor: '#00e5ff', basePrice: 4000, minSize: 30, maxSize: 60, emoji: '🐠' },
+
+    // 영웅 (Epic - ~15%)
+    { name: '참치', grade: '영웅', gradeColor: '#ab47bc', basePrice: 10000, minSize: 100, maxSize: 220, emoji: '🦈' },
+    { name: '킹크랩', grade: '영웅', gradeColor: '#ab47bc', basePrice: 18000, minSize: 30, maxSize: 60, emoji: '🦀' },
+
+    // 전설 (Legendary - ~5%)
+    { name: '황금 등가시치', grade: '전설', gradeColor: '#ffb300', basePrice: 50000, minSize: 150, maxSize: 300, emoji: '🐉' },
+    { name: '전설의 심해룡', grade: '전설', gradeColor: '#ff4081', basePrice: 120000, minSize: 300, maxSize: 600, emoji: '🐲' }
+];
+
+let activeFishingTab = 'spot';
+let isFishingCasted = false;
+let isFishingBiting = false;
+let fishingBiteTimer = null;
+let fishingWindowTimer = null;
+
+function switchFishingTab(tab) {
+    activeFishingTab = tab;
+    ['spot', 'shop', 'bucket'].forEach(t => {
+        const tabBtn = document.getElementById(`tab-fish-${t}`);
+        const tabContent = document.getElementById(`fish-tab-${t}`);
+        if (tabBtn) tabBtn.classList.toggle('active', t === tab);
+        if (tabContent) tabContent.classList.toggle('hidden', t !== tab);
+    });
+
+    renderFishingUI();
+}
+
+function renderFishingUI() {
+    if (!currentUser) return;
+
+    if (!currentUser.equippedRod) currentUser.equippedRod = 'rod_wood';
+    if (!currentUser.unlockedRods) currentUser.unlockedRods = ['rod_wood'];
+    if (!currentUser.fishBucket) currentUser.fishBucket = [];
+
+    const coinDisplay = document.getElementById('fishing-coin-display');
+    if (coinDisplay) coinDisplay.textContent = currentUser.coins.toLocaleString();
+
+    const countBadge = document.getElementById('fish-count-badge');
+    if (countBadge) countBadge.textContent = currentUser.fishBucket.length;
+
+    const currentRod = FISHING_RODS.find(r => r.id === currentUser.equippedRod) || FISHING_RODS[0];
+    const rodNameEl = document.getElementById('current-rod-name');
+    const rodEffectEl = document.getElementById('current-rod-effect');
+    if (rodNameEl) rodNameEl.innerHTML = `${currentRod.name}`;
+    if (rodEffectEl) rodEffectEl.textContent = `입질: ${(currentRod.waitTime/1000).toFixed(1)}초 | 희귀+ bonus: +${currentRod.rareBonus}% | 판매가 ${currentRod.priceMult}x`;
+
+    if (activeFishingTab === 'shop') {
+        renderRodShop();
+    } else if (activeFishingTab === 'bucket') {
+        renderFishBucket();
+    }
+}
+
+function castFishingRod() {
+    if (!currentUser) return;
+    if (isFishingCasted || isFishingBiting) return;
+
+    if (!currentUser.equippedRod) currentUser.equippedRod = 'rod_wood';
+    const rod = FISHING_RODS.find(r => r.id === currentUser.equippedRod) || FISHING_RODS[0];
+
+    isFishingCasted = true;
+    isFishingBiting = false;
+
+    const statusEl = document.getElementById('fish-status-text');
+    const pondAnim = document.getElementById('fish-pond-animation');
+    const castBtn = document.getElementById('btn-cast-rod');
+    const pullBtn = document.getElementById('btn-pull-rod');
+
+    if (castBtn) castBtn.classList.add('hidden');
+    if (pullBtn) pullBtn.classList.add('hidden');
+
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--accent-cyan);">🌊 찌를 멀리 던졌습니다... 입질을 기다리는 중...</span>';
+    if (pondAnim) pondAnim.textContent = '🌊 🎣 〰️ 🌊';
+
+    const actualWait = rod.waitTime + Math.random() * 1500;
+
+    fishingBiteTimer = setTimeout(() => {
+        if (!isFishingCasted) return;
+
+        isFishingBiting = true;
+        if (statusEl) statusEl.innerHTML = '<span style="color:var(--accent-pink); font-size:1.2rem; animation:pulse 0.4s infinite;">💥 찌가 강하게 낚여 들어갑니다!! 지금 [HIT!] 버튼을 누르세요!</span>';
+        if (pondAnim) pondAnim.textContent = '💦 🐟 ⚡ 💦';
+
+        if (pullBtn) pullBtn.classList.remove('hidden');
+
+        fishingWindowTimer = setTimeout(() => {
+            if (isFishingBiting) {
+                isFishingCasted = false;
+                isFishingBiting = false;
+                if (statusEl) statusEl.innerHTML = '<span style="color:var(--lose-color);">💨 물고기가 떡밥만 먹고 도망쳤습니다!</span>';
+                if (pondAnim) pondAnim.textContent = '🌊 🌊 🌊';
+                if (pullBtn) pullBtn.classList.add('hidden');
+                if (castBtn) castBtn.classList.remove('hidden');
+                showToast('타이밍을 놓쳐 물고기가 도망쳤습니다!');
+            }
+        }, 2200);
+
+    }, actualWait);
+}
+
+function pullFishingRod() {
+    if (!currentUser || !isFishingBiting) return;
+
+    clearTimeout(fishingWindowTimer);
+    isFishingCasted = false;
+    isFishingBiting = false;
+
+    const castBtn = document.getElementById('btn-cast-rod');
+    const pullBtn = document.getElementById('btn-pull-rod');
+    const statusEl = document.getElementById('fish-status-text');
+    const pondAnim = document.getElementById('fish-pond-animation');
+
+    if (pullBtn) pullBtn.classList.add('hidden');
+    if (castBtn) castBtn.classList.remove('hidden');
+
+    const rod = FISHING_RODS.find(r => r.id === (currentUser.equippedRod || 'rod_wood')) || FISHING_RODS[0];
+
+    let roll = Math.random() * 100;
+    roll -= rod.rareBonus;
+
+    let possibleFish = [];
+    if (roll < 4) {
+        possibleFish = FISH_TYPES.filter(f => f.grade === '전설');
+    } else if (roll < 18) {
+        possibleFish = FISH_TYPES.filter(f => f.grade === '영웅');
+    } else if (roll < 48) {
+        possibleFish = FISH_TYPES.filter(f => f.grade === '희귀');
+    } else {
+        possibleFish = FISH_TYPES.filter(f => f.grade === '일반');
+    }
+
+    if (possibleFish.length === 0) possibleFish = FISH_TYPES.filter(f => f.grade === '일반');
+    const caughtType = possibleFish[Math.floor(Math.random() * possibleFish.length)];
+
+    const size = (caughtType.minSize + Math.random() * (caughtType.maxSize - caughtType.minSize)).toFixed(1);
+    const sizeBonusMult = 1 + ((size - caughtType.minSize) / (caughtType.maxSize - caughtType.minSize)) * 0.3;
+    const finalPrice = Math.round(caughtType.basePrice * rod.priceMult * sizeBonusMult);
+
+    const fishItem = {
+        id: 'fish_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+        name: caughtType.name,
+        grade: caughtType.grade,
+        gradeColor: caughtType.gradeColor,
+        emoji: caughtType.emoji,
+        size: parseFloat(size),
+        price: finalPrice,
+        date: new Date().toLocaleTimeString()
+    };
+
+    if (!currentUser.fishBucket) currentUser.fishBucket = [];
+    currentUser.fishBucket.unshift(fishItem);
+    updateUserData();
+
+    if (pondAnim) pondAnim.textContent = caughtType.emoji + ' 🎉 ' + caughtType.emoji;
+    if (statusEl) statusEl.innerHTML = `<span style="color:${caughtType.gradeColor}; font-size:1.15rem;">🎉 <b>[${caughtType.grade}] ${caughtType.name}</b> (${size} cm) 낚시 성공!!</span>`;
+
+    const lastCard = document.getElementById('last-caught-card');
+    const badge = document.getElementById('caught-fish-badge');
+    const priceEl = document.getElementById('caught-fish-price');
+    const sizeEl = document.getElementById('caught-fish-size');
+
+    if (lastCard) lastCard.classList.remove('hidden');
+    if (badge) {
+        badge.textContent = `${caughtType.emoji} [${caughtType.grade}] ${caughtType.name}`;
+        badge.style.background = caughtType.gradeColor;
+        badge.style.color = '#000';
+    }
+    if (priceEl) priceEl.textContent = `🪙 ${finalPrice.toLocaleString()} 코인`;
+    if (sizeEl) sizeEl.textContent = `크기: ${size} cm | 장착 낚시대 보너스 반영됨`;
+
+    showToast(`🎉 [${caughtType.grade}] ${caughtType.name} (${size}cm)을 낚아 어망에 보관했습니다!`);
+    renderFishingUI();
+}
+
+function renderRodShop() {
+    const list = document.getElementById('rod-shop-list');
+    if (!list) return;
+
+    if (!currentUser.unlockedRods) currentUser.unlockedRods = ['rod_wood'];
+    if (!currentUser.equippedRod) currentUser.equippedRod = 'rod_wood';
+
+    list.innerHTML = FISHING_RODS.map(rod => {
+        const isUnlocked = currentUser.unlockedRods.includes(rod.id);
+        const isEquipped = currentUser.equippedRod === rod.id;
+
+        return `
+            <div class="glass-card" style="padding:16px; display:flex; flex-direction:column; justify-content:space-between; border-radius:14px; background:rgba(255,255,255,0.04);">
+                <div>
+                    <span style="background:${rod.bg}; padding:4px 10px; border-radius:12px; font-size:0.95rem; font-weight:bold; display:inline-block; margin-bottom:8px;">${escapeHtml(rod.name)}</span>
+                    <p style="font-size:0.85rem; color:var(--text-secondary); margin:6px 0 10px 0;">${escapeHtml(rod.desc)}</p>
+                    <div style="font-size:0.8rem; color:var(--accent-cyan); line-height:1.4;">
+                        ⚡ 입질 속도: ${(rod.waitTime/1000).toFixed(1)}초<br>
+                        ✨ 희귀+ 확률: +${rod.rareBonus}%<br>
+                        💰 코인 판매가: ${rod.priceMult}배
+                    </div>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px;">
+                    <span style="font-weight:bold; color:var(--accent-yellow);">${rod.price === 0 ? '기본 제공' : '🪙 ' + rod.price.toLocaleString() + ' 코인'}</span>
+                    ${isEquipped 
+                        ? '<span style="color:#4caf50; font-weight:bold; font-size:0.85rem;">✨ 장착 중</span>' 
+                        : (isUnlocked 
+                            ? `<button class="btn-primary btn-sm" onclick="equipRod('${rod.id}')">장착하기</button>` 
+                            : `<button class="btn-primary btn-sm" onclick="buyRod('${rod.id}')">구매하기</button>`)}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function buyRod(rodId) {
+    if (!currentUser) return;
+    const rod = FISHING_RODS.find(r => r.id === rodId);
+    if (!rod) return;
+
+    if (currentUser.coins < rod.price) {
+        showToast('구매 코인이 부족합니다!');
+        return;
+    }
+
+    currentUser.coins -= rod.price;
+    if (!currentUser.unlockedRods) currentUser.unlockedRods = ['rod_wood'];
+    currentUser.unlockedRods.push(rod.id);
+    currentUser.equippedRod = rod.id;
+
+    updateUserData();
+    showToast(`'${rod.name}'을 구매하고 즉시 장착했습니다! 🎣`);
+    renderFishingUI();
+}
+
+function equipRod(rodId) {
+    if (!currentUser) return;
+    currentUser.equippedRod = rodId;
+    updateUserData();
+    showToast(`낚시대를 변경했습니다!`);
+    renderFishingUI();
+}
+
+function renderFishBucket() {
+    const list = document.getElementById('fish-bucket-list');
+    const totalValEl = document.getElementById('bucket-total-value');
+    if (!list) return;
+
+    const fishes = currentUser.fishBucket || [];
+    const totalVal = fishes.reduce((sum, f) => sum + (f.price || 0), 0);
+    if (totalValEl) totalValEl.textContent = `🪙 ${totalVal.toLocaleString()} 코인`;
+
+    if (fishes.length === 0) {
+        list.innerHTML = '<div class="room-empty" style="grid-column: 1 / -1;">어망이 비어있습니다.<br>낚시터에서 물고기를 낚아보세요!</div>';
+        return;
+    }
+
+    list.innerHTML = fishes.map((f, idx) => {
+        return `
+            <div class="glass-card" style="padding:14px; display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.04); border-radius:12px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <span style="font-size:2rem;">${f.emoji || '🐟'}</span>
+                    <div>
+                        <div>
+                            <span style="background:${f.gradeColor || '#b0bec5'}; color:#000; padding:2px 8px; border-radius:10px; font-size:0.75rem; font-weight:bold;">${f.grade}</span>
+                            <span style="font-weight:bold; font-size:0.95rem; margin-left:4px;">${escapeHtml(f.name)}</span>
+                        </div>
+                        <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:2px;">크기: ${f.size} cm | ${f.date || ''}</div>
+                    </div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-weight:bold; color:var(--accent-yellow); font-size:0.95rem; margin-bottom:4px;">🪙 ${f.price.toLocaleString()}</div>
+                    <button class="btn-secondary btn-sm" style="padding:4px 10px; font-size:0.75rem;" onclick="sellSingleFish(${idx})">판매</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function sellSingleFish(index) {
+    if (!currentUser || !currentUser.fishBucket) return;
+    const fish = currentUser.fishBucket[index];
+    if (!fish) return;
+
+    currentUser.coins += fish.price;
+    currentUser.fishBucket.splice(index, 1);
+
+    updateUserData();
+    showToast(`'${fish.name}'을 판매하여 🪙 ${fish.price.toLocaleString()} 코인을 획득했습니다!`);
+    renderFishingUI();
+}
+
+function sellAllFish() {
+    if (!currentUser || !currentUser.fishBucket || currentUser.fishBucket.length === 0) {
+        showToast('판매할 물고기가 어망에 없습니다!');
+        return;
+    }
+
+    const totalVal = currentUser.fishBucket.reduce((sum, f) => sum + (f.price || 0), 0);
+    const count = currentUser.fishBucket.length;
+
+    currentUser.coins += totalVal;
+    currentUser.fishBucket = [];
+
+    updateUserData();
+    showToast(`어망의 물고기 ${count}마리를 일괄 판매하여 🪙 ${totalVal.toLocaleString()} 코인을 획득했습니다! 🎉`);
+    renderFishingUI();
 }
 
 // ===== INITIALIZATION =====

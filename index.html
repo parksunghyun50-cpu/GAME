@@ -134,6 +134,13 @@
                     <div class="lobby-card-desc">1등 달팽이 맞추기 & 3배 코인 획득!</div>
                     <div class="lobby-card-arrow">→</div>
                 </button>
+                <!-- Fishing System -->
+                <button class="lobby-card" onclick="showScreen('screen-fishing')">
+                    <div class="lobby-card-icon">🎣</div>
+                    <div class="lobby-card-title">아레나 낚시터</div>
+                    <div class="lobby-card-desc">물고기 낚시, 낚시대 등급 업그레이드 & 코인 획득!</div>
+                    <div class="lobby-card-arrow">→</div>
+                </button>
                 <!-- Shop & Marketplace -->
                 <button class="lobby-card" onclick="showScreen('screen-shop')">
                     <div class="lobby-card-icon">🛍️</div>
@@ -616,6 +623,87 @@
                     <div id="snail-runner-3" style="position:absolute; left:0%; top:2px; font-size:1.8rem; transition: left 0.15s ease-out;">🐌</div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- ===== FISHING SYSTEM SCREEN (아레나 낚시터) ===== -->
+    <div class="screen" id="screen-fishing">
+        <header class="top-bar">
+            <button class="btn-back" onclick="showScreen('screen-lobby')">← 로비</button>
+            <div class="coin-display">
+                <span class="coin-icon">🪙</span>
+                <span class="coin-amount" id="fishing-coin-display">1,000</span>
+            </div>
+        </header>
+
+        <div class="glass-card" style="padding:18px; text-align:center; margin-bottom:15px;">
+            <h2 style="font-size:1.6rem; font-weight:900; margin-bottom:4px;">🎣 아레나 낚시터</h2>
+            <p style="font-size:0.85rem; color:var(--text-secondary);">희귀한 물고기를 낚아 코인을 벌고 고급 낚시대로 업그레이드하세요!</p>
+        </div>
+
+        <!-- Fishing Tabs -->
+        <div class="auth-tabs" style="margin-bottom:15px;">
+            <button class="auth-tab active" id="tab-fish-spot" onclick="switchFishingTab('spot')">🎣 낚시터</button>
+            <button class="auth-tab" id="tab-fish-shop" onclick="switchFishingTab('shop')">🛒 낚시대 상점</button>
+            <button class="auth-tab" id="tab-fish-bucket" onclick="switchFishingTab('bucket')">🧺 내 어망 (<span id="fish-count-badge">0</span>)</button>
+        </div>
+
+        <!-- Tab 1: 낚시터 필드 -->
+        <div class="fishing-tab-content" id="fish-tab-spot">
+            <!-- Equipped Rod Card -->
+            <div class="glass-card" style="padding:14px 18px; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center; background:rgba(0,229,255,0.06); border:1px solid rgba(0,229,255,0.2);">
+                <div>
+                    <div style="font-size:0.8rem; color:var(--text-secondary);">현재 장착 중인 낚시대</div>
+                    <div style="font-size:1.05rem; font-weight:bold; color:#fff;" id="current-rod-name">🪵 나무 낚시대</div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-size:0.75rem; color:var(--accent-cyan);" id="current-rod-effect">희귀 확률 기본 | 판매가 1.0x</div>
+                    <button class="btn-secondary btn-sm" style="margin-top:4px; padding:4px 10px; font-size:0.75rem;" onclick="switchFishingTab('shop')">변경 / 상점</button>
+                </div>
+            </div>
+
+            <!-- Pond Spot Area -->
+            <div class="glass-card" style="padding:24px 16px; text-align:center; margin-bottom:15px; background:linear-gradient(180deg, rgba(13,71,161,0.3), rgba(1,87,155,0.5)); border:1px solid rgba(0,229,255,0.3); position:relative; overflow:hidden;">
+                <div id="fish-pond-animation" style="font-size:4rem; margin-bottom:10px; transition: transform 0.3s ease;">🌊 🎣 🌊</div>
+                <div id="fish-status-text" style="font-size:1.05rem; font-weight:bold; color:#fff; min-height:48px; display:flex; align-items:center; justify-content:center;">
+                    찌를 던져 낚시를 시작해보세요!
+                </div>
+
+                <div style="margin-top:15px; display:flex; gap:10px; justify-content:center;">
+                    <button class="btn-primary" id="btn-cast-rod" onclick="castFishingRod()" style="padding:14px 28px; font-size:1.1rem; background:linear-gradient(135deg, #00e5ff, #1de9b6); text-shadow:0 1px 2px rgba(0,0,0,0.4);">
+                        🎣 찌 던지기
+                    </button>
+                    <button class="btn-primary hidden" id="btn-pull-rod" onclick="pullFishingRod()" style="padding:14px 28px; font-size:1.2rem; background:linear-gradient(135deg, #ff4081, #ff6d00);">
+                        💥 HIT! 낚아채기!
+                    </button>
+                </div>
+            </div>
+
+            <!-- Last Caught Result Display -->
+            <div id="last-caught-card" class="glass-card hidden" style="padding:16px; text-align:center; background:rgba(255,255,255,0.06); border:1px dashed var(--accent-yellow);">
+                <div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:4px;">🎉 방금 낚은 물고기</div>
+                <div id="caught-fish-badge" style="display:inline-block; padding:4px 12px; border-radius:12px; font-weight:bold; font-size:0.9rem; margin-bottom:6px;">[희귀] 연어</div>
+                <div style="font-size:1.2rem; font-weight:bold; color:var(--accent-yellow);" id="caught-fish-price">🪙 1,200 코인</div>
+                <div style="font-size:0.8rem; color:var(--text-secondary);" id="caught-fish-size">길이: 42.5 cm</div>
+            </div>
+        </div>
+
+        <!-- Tab 2: 낚시대 상점 -->
+        <div class="fishing-tab-content hidden" id="fish-tab-shop">
+            <h3 style="font-size:1.1rem; margin-bottom:12px;">🛒 낚시대 상점 (등급별 효과)</h3>
+            <div id="rod-shop-list" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:12px;"></div>
+        </div>
+
+        <!-- Tab 3: 내 어망 (수족관 & 일괄 판매) -->
+        <div class="fishing-tab-content hidden" id="fish-tab-bucket">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; background:rgba(255,255,255,0.05); padding:12px 16px; border-radius:12px;">
+                <div>
+                    <div style="font-size:0.8rem; color:var(--text-secondary);">어망 보관 총 가치</div>
+                    <div style="font-size:1.2rem; font-weight:bold; color:var(--accent-yellow);" id="bucket-total-value">🪙 0 코인</div>
+                </div>
+                <button class="btn-primary btn-sm" onclick="sellAllFish()" style="background:var(--accent-orange);">💰 전체 물고기 일괄 판매</button>
+            </div>
+            <div id="fish-bucket-list" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:12px;"></div>
         </div>
     </div>
 
