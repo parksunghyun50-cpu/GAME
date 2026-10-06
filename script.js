@@ -1020,6 +1020,39 @@ function renderProfile() {
     document.getElementById('profile-id').textContent = `@${currentUser.id}`;
     document.getElementById('profile-coins').textContent = currentUser.coins.toLocaleString();
 
+    // 칭호 착용 관리 및 해제
+    const equippedBadge = document.getElementById('equipped-title-badge');
+    if (equippedBadge) {
+        if (currentUser.title) {
+            equippedBadge.innerHTML = `
+                <span class="user-custom-title" style="background:${currentUser.titleBg || 'var(--accent-purple)'}; padding:4px 10px; border-radius:12px; font-size:0.9rem; font-weight:bold;">${escapeHtml(currentUser.title)}</span>
+                <button class="btn-secondary btn-sm" onclick="unequipTitle()" style="margin-left:8px; background:rgba(255,255,255,0.15);">❌ 착용 해제</button>
+            `;
+        } else {
+            equippedBadge.innerHTML = '<span style="color:var(--text-secondary); font-size:0.85rem;">착용 중인 칭호 없음</span>';
+        }
+    }
+
+    const titleActions = document.getElementById('profile-title-actions');
+    if (titleActions) {
+        const items = currentUser.inventory || [];
+        if (items.length === 0) {
+            titleActions.innerHTML = '<div style="grid-column:1/-1; color:var(--text-secondary); font-size:0.85rem;">보유 중인 칭호가 없습니다. 상점에서 칭호를 구매해보세요!</div>';
+        } else {
+            titleActions.innerHTML = items.map(item => {
+                const isEquipped = currentUser.title === item.name;
+                return `
+                    <div style="background:rgba(255,255,255,0.05); padding:10px 12px; border-radius:10px; display:flex; justify-content:space-between; align-items:center;">
+                        <span class="user-custom-title" style="background:${item.bg || 'var(--accent-purple)'}; font-size:0.8rem;">${escapeHtml(item.name)}</span>
+                        ${isEquipped 
+                            ? '<span style="color:#4caf50; font-size:0.8rem; font-weight:bold;">✨ 착용 중</span>' 
+                            : `<button class="btn-primary btn-sm" onclick="equipTitleFromProfile('${escapeHtml(item.name)}', '${escapeHtml(item.bg)}')">✨ 착용</button>`}
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+
     const total = currentUser.wins + currentUser.losses + currentUser.draws;
     document.getElementById('stat-total').textContent = total;
     document.getElementById('stat-wins').textContent = currentUser.wins;
@@ -1050,6 +1083,24 @@ function renderProfile() {
             </div>
         `;
     }).join('');
+}
+
+function unequipTitle() {
+    if (!currentUser) return;
+    currentUser.title = '';
+    currentUser.titleBg = '';
+    updateUserData();
+    showToast('칭호 착용을 해제했습니다.');
+    renderProfile();
+}
+
+function equipTitleFromProfile(name, bg) {
+    if (!currentUser) return;
+    currentUser.title = name;
+    currentUser.titleBg = bg;
+    updateUserData();
+    showToast(`'${name}' 칭호를 장착했습니다!`);
+    renderProfile();
 }
 
 function renderRanking() {
@@ -1226,7 +1277,7 @@ function adminAddCoins(userId) {
 }
 
 // ===== SHOP & MARKETPLACE & GIFT LOGIC =====
-const OFFICIAL_TITLES = [
+const DEFAULT_OFFICIAL_TITLES = [
     { id: 't_legend', name: '👑 가위바위보 전설', price: 10000, bg: 'linear-gradient(135deg, #ff4081, #7c4dff)', desc: '아레나 최강 승리자에게 부여되는 전설의 칭호' },
     { id: 't_master', name: '⚔️ 아레나 패왕', price: 5000, bg: 'linear-gradient(135deg, #ff6e40, #ff4081)', desc: '수많은 대전을 지배한 압도적 패왕의 칭호' },
     { id: 't_rich', name: '💎 억만장자', price: 3000, bg: 'linear-gradient(135deg, #00e5ff, #1de9b6)', desc: '엄청난 재력을 자랑하는 가위바위보 부호' },
@@ -1234,6 +1285,19 @@ const OFFICIAL_TITLES = [
     { id: 't_lucky', name: '🍀 행운의 승부사', price: 1000, bg: 'linear-gradient(135deg, #00e676, #1de9b6)', desc: '언제나 운이 함께하는 플레이어' },
     { id: 't_rookie', name: '🐣 아레나 루키', price: 500, bg: 'linear-gradient(135deg, #ab47bc, #8e24aa)', desc: '새롭게 도전을 시작하는 도전자' }
 ];
+
+function getStorageOfficialTitles() {
+    const data = localStorage.getItem('rps_arena_official_titles');
+    if (!data) {
+        localStorage.setItem('rps_arena_official_titles', JSON.stringify(DEFAULT_OFFICIAL_TITLES));
+        return DEFAULT_OFFICIAL_TITLES;
+    }
+    return JSON.parse(data);
+}
+
+function saveStorageOfficialTitles(titles) {
+    localStorage.setItem('rps_arena_official_titles', JSON.stringify(titles));
+}
 
 function getStorageMarket() {
     const data = localStorage.getItem('rps_arena_market');
@@ -1273,28 +1337,47 @@ function renderOfficialShop() {
     const list = document.getElementById('official-shop-list');
     if (!list) return;
 
-    list.innerHTML = OFFICIAL_TITLES.map(item => {
+    const titles = getStorageOfficialTitles();
+    const isAdmin = currentUser && (currentUser.isAdmin || currentUser.id === ADMIN_ID);
+
+    let html = '';
+    if (isAdmin) {
+        html += `
+            <div class="glass-card" style="grid-column: 1 / -1; padding:14px 18px; display:flex; justify-content:space-between; align-items:center; background:rgba(255,64,129,0.12); border:1px dashed var(--accent-pink); border-radius:14px; margin-bottom:6px;">
+                <span style="font-weight:bold; color:var(--accent-pink);">👑 관리자 전용: 공식 상점 칭호 관리 (추가/가격·이름 수정)</span>
+                <button class="btn-primary btn-sm" onclick="adminAddOfficialTitle()" style="background:var(--accent-pink);">+ 새 공식 칭호 추가</button>
+            </div>
+        `;
+    }
+
+    html += titles.map(item => {
         const isOwned = (currentUser.inventory || []).some(inv => inv.name === item.name);
         return `
             <div class="glass-card" style="padding:16px; display:flex; flex-direction:column; justify-content:space-between; border-radius:14px; background:rgba(255,255,255,0.04);">
                 <div>
                     <span class="user-custom-title" style="background:${item.bg}; padding:4px 10px; border-radius:12px; font-size:0.9rem; font-weight:bold; display:inline-block; margin-bottom:8px;">${escapeHtml(item.name)}</span>
-                    <p style="font-size:0.85rem; color:var(--text-secondary); margin:6px 0 12px 0;">${escapeHtml(item.desc)}</p>
+                    <p style="font-size:0.85rem; color:var(--text-secondary); margin:6px 0 12px 0;">${escapeHtml(item.desc || '상점 공식 칭호')}</p>
                 </div>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; flex-wrap:wrap; gap:6px;">
                     <span style="font-weight:bold; color:var(--accent-yellow);">🪙 ${item.price.toLocaleString()} 코인</span>
-                    ${isOwned 
-                        ? '<span style="font-size:0.8rem; color:#4caf50; font-weight:bold;">✅ 보유 중</span>'
-                        : `<button class="btn-primary btn-sm" onclick="buyOfficialTitle('${item.id}')">구매하기</button>`}
+                    <div style="display:flex; gap:6px; align-items:center;">
+                        ${isAdmin ? `<button class="btn-secondary btn-sm" onclick="adminEditOfficialTitle('${item.id}')">✏️ 수정</button><button class="btn-secondary btn-sm" onclick="adminDeleteOfficialTitle('${item.id}')" style="background:rgba(244,67,54,0.3);">🗑️</button>` : ''}
+                        ${isOwned 
+                            ? '<span style="font-size:0.8rem; color:#4caf50; font-weight:bold;">✅ 보유 중</span>'
+                            : `<button class="btn-primary btn-sm" onclick="buyOfficialTitle('${item.id}')">구매하기</button>`}
+                    </div>
                 </div>
             </div>
         `;
     }).join('');
+
+    list.innerHTML = html;
 }
 
 function buyOfficialTitle(titleId) {
     if (!currentUser) return;
-    const title = OFFICIAL_TITLES.find(t => t.id === titleId);
+    const titles = getStorageOfficialTitles();
+    const title = titles.find(t => t.id === titleId);
     if (!title) return;
 
     if (currentUser.coins < title.price) {
@@ -1320,6 +1403,74 @@ function buyOfficialTitle(titleId) {
 
     updateUserData();
     showToast(`'${title.name}' 칭호를 구매하고 장착했습니다! 🎉`);
+    renderShopUI();
+}
+
+function adminAddOfficialTitle() {
+    if (!currentUser || (!currentUser.isAdmin && currentUser.id !== ADMIN_ID)) return;
+    const name = prompt('추가할 새 공식 칭호 이름을 입력하세요 (예: ⚡ 가위바위보 신):', '⚡ 가위바위보 신');
+    if (!name || !name.trim()) return;
+
+    const priceStr = prompt('칭호 판매 가격 (코인)을 입력하세요:', '8000');
+    const price = parseInt(priceStr, 10);
+    if (isNaN(price) || price <= 0) {
+        showToast('올바른 가격을 입력해주세요.');
+        return;
+    }
+
+    const bg = prompt('칭호 배경 색상 코드를 입력하세요 (HEX/RGB/Gradient):', 'linear-gradient(135deg, #00e5ff, #7c4dff)');
+
+    const titles = getStorageOfficialTitles();
+    const newTitle = {
+        id: 't_custom_' + Date.now(),
+        name: name.trim(),
+        price: price,
+        bg: bg || 'linear-gradient(135deg, #00e5ff, #7c4dff)',
+        desc: '관리자가 추가한 특별 공식 칭호'
+    };
+    titles.unshift(newTitle);
+    saveStorageOfficialTitles(titles);
+
+    showToast(`새 공식 칭호 '${newTitle.name}' 이(가) 상점에 등록되었습니다!`);
+    renderShopUI();
+}
+
+function adminEditOfficialTitle(titleId) {
+    if (!currentUser || (!currentUser.isAdmin && currentUser.id !== ADMIN_ID)) return;
+    const titles = getStorageOfficialTitles();
+    const title = titles.find(t => t.id === titleId);
+    if (!title) return;
+
+    const newName = prompt('변경할 칭호 이름을 입력하세요:', title.name);
+    if (!newName || !newName.trim()) return;
+
+    const priceStr = prompt('변경할 판매 가격 (코인)을 입력하세요:', title.price);
+    const newPrice = parseInt(priceStr, 10);
+    if (isNaN(newPrice) || newPrice <= 0) {
+        showToast('올바른 가격을 입력해주세요.');
+        return;
+    }
+
+    const newBg = prompt('변경할 칭호 배경 색상 코드를 입력하세요:', title.bg || 'linear-gradient(135deg, #ff4081, #7c4dff)');
+
+    title.name = newName.trim();
+    title.price = newPrice;
+    if (newBg) title.bg = newBg.trim();
+
+    saveStorageOfficialTitles(titles);
+    showToast(`'${title.name}' 칭호 정보(이름/가격)가 수정되었습니다.`);
+    renderShopUI();
+}
+
+function adminDeleteOfficialTitle(titleId) {
+    if (!currentUser || (!currentUser.isAdmin && currentUser.id !== ADMIN_ID)) return;
+    if (!confirm('정말로 이 공식 칭호를 상점에서 삭제하시겠습니까?')) return;
+
+    let titles = getStorageOfficialTitles();
+    titles = titles.filter(t => t.id !== titleId);
+    saveStorageOfficialTitles(titles);
+
+    showToast('공식 칭호가 상점에서 삭제되었습니다.');
     renderShopUI();
 }
 
