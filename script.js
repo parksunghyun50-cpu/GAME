@@ -46,15 +46,23 @@ function getStorageUsers() {
             draws: 0,
             isAdmin: true,
             lastDaily: new Date().toDateString(),
-            history: []
+            history: [],
+            inventory: [],
+            inbox: []
         };
     }
 
     // 기본 테스트 샘플 유저가 없으면 추가
     if (!users['pro']) {
-        users['pro'] = { id: 'pro', nickname: '승리왕Pro', pw: '123456', coins: 12400, wins: 28, losses: 14, draws: 3, history: [] };
-        users['lucky'] = { id: 'lucky', nickname: '행운아', pw: '123456', coins: 5500, wins: 15, losses: 8, draws: 1, history: [] };
+        users['pro'] = { id: 'pro', nickname: '승리왕Pro', pw: '123456', coins: 12400, wins: 28, losses: 14, draws: 3, history: [], inventory: [], inbox: [] };
+        users['lucky'] = { id: 'lucky', nickname: '행운아', pw: '123456', coins: 5500, wins: 15, losses: 8, draws: 1, history: [], inventory: [], inbox: [] };
     }
+
+    // 모든 유저의 inventory 및 inbox 배열 보장
+    Object.keys(users).forEach(id => {
+        if (!users[id].inventory) users[id].inventory = [];
+        if (!users[id].inbox) users[id].inbox = [];
+    });
 
     localStorage.setItem('rps_arena_users', JSON.stringify(users));
     return users;
@@ -88,6 +96,10 @@ function showScreen(screenId) {
         updateBetUI();
     } else if (screenId === 'screen-rooms') {
         renderRoomList();
+    } else if (screenId === 'screen-shop') {
+        renderShopUI();
+    } else if (screenId === 'screen-inbox') {
+        renderInbox();
     } else if (screenId === 'screen-profile') {
         renderProfile();
     } else if (screenId === 'screen-ranking') {
@@ -398,7 +410,17 @@ function updateLobbyUI() {
     document.getElementById('user-name').textContent = currentUser.nickname;
     document.getElementById('coin-amount').textContent = currentUser.coins.toLocaleString();
 
-    // 관리자 계정일 경우 관리자 대시보드 버튼 노출
+    const badge = document.getElementById('inbox-badge');
+    if (badge) {
+        const unclaimed = (currentUser.inbox || []).length;
+        if (unclaimed > 0) {
+            badge.textContent = unclaimed;
+            badge.classList.remove('hidden');
+        } else {
+            badge.classList.add('hidden');
+        }
+    }
+
     const adminCard = document.getElementById('admin-lobby-card');
     if (currentUser.isAdmin || currentUser.id === ADMIN_ID) {
         adminCard.classList.remove('hidden');
@@ -1096,6 +1118,7 @@ function renderAdminDashboard() {
                     <button class="btn-admin-act btn-edit-title" onclick="adminEditTitle('${u.id}')">🏷️ 칭호 설정</button>
                     <button class="btn-admin-act btn-edit-color" onclick="adminEditColor('${u.id}')">🎨 닉네임 색상</button>
                     <button class="btn-admin-act btn-add-coin" onclick="adminAddCoins('${u.id}')">🪙 코인 지급/차감</button>
+                    <button class="btn-admin-act btn-edit-title" onclick="adminSendGift('${u.id}')" style="background:var(--accent-pink);">🎁 선물 보내기</button>
                     ${!isAdminAccount ? `<button class="btn-admin-act btn-delete-user" onclick="adminDeleteUser('${u.id}')">🗑️ 계정 삭제</button>` : ''}
                 </div>
             </div>
@@ -1202,8 +1225,385 @@ function adminAddCoins(userId) {
     }
 }
 
+// ===== SHOP & MARKETPLACE & GIFT LOGIC =====
+const OFFICIAL_TITLES = [
+    { id: 't_legend', name: '👑 가위바위보 전설', price: 10000, bg: 'linear-gradient(135deg, #ff4081, #7c4dff)', desc: '아레나 최강 승리자에게 부여되는 전설의 칭호' },
+    { id: 't_master', name: '⚔️ 아레나 패왕', price: 5000, bg: 'linear-gradient(135deg, #ff6e40, #ff4081)', desc: '수많은 대전을 지배한 압도적 패왕의 칭호' },
+    { id: 't_rich', name: '💎 억만장자', price: 3000, bg: 'linear-gradient(135deg, #00e5ff, #1de9b6)', desc: '엄청난 재력을 자랑하는 가위바위보 부호' },
+    { id: 't_streak', name: '🔥 연승의 연금술사', price: 2000, bg: 'linear-gradient(135deg, #ffab40, #ff6d00)', desc: '멈추지 않는 연속 승리의 주인공' },
+    { id: 't_lucky', name: '🍀 행운의 승부사', price: 1000, bg: 'linear-gradient(135deg, #00e676, #1de9b6)', desc: '언제나 운이 함께하는 플레이어' },
+    { id: 't_rookie', name: '🐣 아레나 루키', price: 500, bg: 'linear-gradient(135deg, #ab47bc, #8e24aa)', desc: '새롭게 도전을 시작하는 도전자' }
+];
+
+function getStorageMarket() {
+    const data = localStorage.getItem('rps_arena_market');
+    return data ? JSON.parse(data) : [];
+}
+
+function saveStorageMarket(market) {
+    localStorage.setItem('rps_arena_market', JSON.stringify(market));
+}
+
+let activeShopTab = 'buy';
+
+function switchShopTab(tab) {
+    activeShopTab = tab;
+    document.getElementById('tab-shop-buy').classList.toggle('active', tab === 'buy');
+    document.getElementById('tab-shop-market').classList.toggle('active', tab === 'market');
+    document.getElementById('tab-shop-bag').classList.toggle('active', tab === 'bag');
+
+    document.getElementById('shop-tab-buy').classList.toggle('hidden', tab !== 'buy');
+    document.getElementById('shop-tab-market').classList.toggle('hidden', tab !== 'market');
+    document.getElementById('shop-tab-bag').classList.toggle('hidden', tab !== 'bag');
+
+    renderShopUI();
+}
+
+function renderShopUI() {
+    if (!currentUser) return;
+    const shopCoinDisplay = document.getElementById('shop-coin-display');
+    if (shopCoinDisplay) shopCoinDisplay.textContent = currentUser.coins.toLocaleString();
+
+    if (activeShopTab === 'buy') renderOfficialShop();
+    else if (activeShopTab === 'market') renderUserMarket();
+    else if (activeShopTab === 'bag') renderInventory();
+}
+
+function renderOfficialShop() {
+    const list = document.getElementById('official-shop-list');
+    if (!list) return;
+
+    list.innerHTML = OFFICIAL_TITLES.map(item => {
+        const isOwned = (currentUser.inventory || []).some(inv => inv.name === item.name);
+        return `
+            <div class="glass-card" style="padding:16px; display:flex; flex-direction:column; justify-content:space-between; border-radius:14px; background:rgba(255,255,255,0.04);">
+                <div>
+                    <span class="user-custom-title" style="background:${item.bg}; padding:4px 10px; border-radius:12px; font-size:0.9rem; font-weight:bold; display:inline-block; margin-bottom:8px;">${escapeHtml(item.name)}</span>
+                    <p style="font-size:0.85rem; color:var(--text-secondary); margin:6px 0 12px 0;">${escapeHtml(item.desc)}</p>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+                    <span style="font-weight:bold; color:var(--accent-yellow);">🪙 ${item.price.toLocaleString()} 코인</span>
+                    ${isOwned 
+                        ? '<span style="font-size:0.8rem; color:#4caf50; font-weight:bold;">✅ 보유 중</span>'
+                        : `<button class="btn-primary btn-sm" onclick="buyOfficialTitle('${item.id}')">구매하기</button>`}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function buyOfficialTitle(titleId) {
+    if (!currentUser) return;
+    const title = OFFICIAL_TITLES.find(t => t.id === titleId);
+    if (!title) return;
+
+    if (currentUser.coins < title.price) {
+        showToast('코인이 부족합니다!');
+        return;
+    }
+
+    if ((currentUser.inventory || []).some(inv => inv.name === title.name)) {
+        showToast('이미 보유하고 있는 칭호입니다!');
+        return;
+    }
+
+    currentUser.coins -= title.price;
+    if (!currentUser.inventory) currentUser.inventory = [];
+    currentUser.inventory.push({
+        id: title.id + '_' + Date.now(),
+        name: title.name,
+        bg: title.bg
+    });
+
+    currentUser.title = title.name;
+    currentUser.titleBg = title.bg;
+
+    updateUserData();
+    showToast(`'${title.name}' 칭호를 구매하고 장착했습니다! 🎉`);
+    renderShopUI();
+}
+
+function renderUserMarket() {
+    const list = document.getElementById('user-market-list');
+    if (!list) return;
+    const market = getStorageMarket();
+
+    if (market.length === 0) {
+        list.innerHTML = '<div class="room-empty" style="grid-column: 1 / -1;">등록된 유저 장터 매물이 없습니다.<br>내 가방의 칭호를 등록해보세요!</div>';
+        return;
+    }
+
+    list.innerHTML = market.map(item => {
+        const isMine = currentUser && item.sellerId === currentUser.id;
+        return `
+            <div class="glass-card" style="padding:16px; display:flex; flex-direction:column; justify-content:space-between; border-radius:14px; background:rgba(255,255,255,0.04);">
+                <div>
+                    <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:6px;">판매자: ${escapeHtml(item.sellerName)}</div>
+                    <span class="user-custom-title" style="background:${item.title.bg || 'var(--accent-purple)'}; padding:4px 10px; border-radius:12px; font-size:0.9rem; font-weight:bold; display:inline-block; margin-bottom:8px;">${escapeHtml(item.title.name)}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px;">
+                    <span style="font-weight:bold; color:var(--accent-yellow);">🪙 ${item.price.toLocaleString()} 코인</span>
+                    ${isMine 
+                        ? `<button class="btn-secondary btn-sm" onclick="cancelMarketListing(${item.id})">등록 취소</button>`
+                        : `<button class="btn-primary btn-sm" onclick="buyMarketTitle(${item.id})">구매하기</button>`}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function showSellModal() {
+    if (!currentUser || !currentUser.inventory || currentUser.inventory.length === 0) {
+        showToast('판매 등록할 보유 칭호가 없습니다! 상점에서 칭호를 구매해보세요.');
+        return;
+    }
+    const select = document.getElementById('sell-title-select');
+    select.innerHTML = currentUser.inventory.map(item => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('');
+    document.getElementById('sell-market-modal').classList.remove('hidden');
+}
+
+function hideSellModal() {
+    document.getElementById('sell-market-modal').classList.add('hidden');
+}
+
+function confirmListOnMarket() {
+    if (!currentUser) return;
+    const itemSelectId = document.getElementById('sell-title-select').value;
+    const priceInput = document.getElementById('sell-price-input').value;
+    const price = parseInt(priceInput, 10);
+
+    if (isNaN(price) || price <= 0) {
+        showToast('올바른 판매 가격을 입력하세요!');
+        return;
+    }
+
+    const itemIndex = currentUser.inventory.findIndex(inv => inv.id === itemSelectId);
+    if (itemIndex === -1) {
+        showToast('선택한 칭호를 찾을 수 없습니다.');
+        return;
+    }
+
+    const titleObj = currentUser.inventory.splice(itemIndex, 1)[0];
+    const market = getStorageMarket();
+    const newListing = {
+        id: Date.now(),
+        sellerId: currentUser.id,
+        sellerName: currentUser.nickname,
+        title: titleObj,
+        price: price,
+        date: new Date().toLocaleTimeString()
+    };
+
+    market.unshift(newListing);
+    saveStorageMarket(market);
+    updateUserData();
+    hideSellModal();
+    showToast(`'${titleObj.name}' 칭호가 ${price.toLocaleString()} 코인에 장터 등록되었습니다!`);
+    switchShopTab('market');
+}
+
+function buyMarketTitle(marketId) {
+    if (!currentUser) return;
+    let market = getStorageMarket();
+    const listing = market.find(m => m.id === marketId);
+    if (!listing) {
+        showToast('해당 매물이 존재하지 않거나 이미 판매되었습니다.');
+        return;
+    }
+
+    if (listing.sellerId === currentUser.id) {
+        showToast('본인의 매물은 구매할 수 없습니다.');
+        return;
+    }
+
+    if (currentUser.coins < listing.price) {
+        showToast('코인이 부족하여 구매할 수 없습니다!');
+        return;
+    }
+
+    currentUser.coins -= listing.price;
+    if (!currentUser.inventory) currentUser.inventory = [];
+    currentUser.inventory.push(listing.title);
+
+    currentUser.title = listing.title.name;
+    currentUser.titleBg = listing.title.bg;
+    updateUserData();
+
+    const users = getStorageUsers();
+    if (users[listing.sellerId]) {
+        users[listing.sellerId].coins += listing.price;
+        if (!users[listing.sellerId].inbox) users[listing.sellerId].inbox = [];
+        users[listing.sellerId].inbox.unshift({
+            id: Date.now(),
+            title: '⚖️ 장터 거래 성공 알림',
+            content: `'${listing.title.name}' 칭호가 ${currentUser.nickname} 님에게 ${listing.price.toLocaleString()} 코인에 판매되었습니다! 🎉`,
+            coins: 0,
+            date: new Date().toLocaleTimeString()
+        });
+        saveStorageUsers(users);
+    }
+
+    market = market.filter(m => m.id !== marketId);
+    saveStorageMarket(market);
+
+    showToast(`'${listing.title.name}' 칭호를 장터에서 성공적으로 구매하였습니다! 🎉`);
+    renderShopUI();
+}
+
+function cancelMarketListing(marketId) {
+    if (!currentUser) return;
+    let market = getStorageMarket();
+    const listing = market.find(m => m.id === marketId);
+    if (!listing || listing.sellerId !== currentUser.id) return;
+
+    market = market.filter(m => m.id !== marketId);
+    saveStorageMarket(market);
+
+    if (!currentUser.inventory) currentUser.inventory = [];
+    currentUser.inventory.push(listing.title);
+    updateUserData();
+
+    showToast(`'${listing.title.name}' 매물 등록이 취소되어 가방으로 돌아왔습니다.`);
+    renderShopUI();
+}
+
+function renderInventory() {
+    const list = document.getElementById('inventory-list');
+    if (!list) return;
+
+    const items = currentUser.inventory || [];
+    if (items.length === 0) {
+        list.innerHTML = '<div class="room-empty" style="grid-column: 1 / -1;">보유 중인 칭호가 없습니다.<br>상점이나 장터에서 칭호를 구해보세요!</div>';
+        return;
+    }
+
+    list.innerHTML = items.map(item => {
+        const isEquipped = currentUser.title === item.name;
+        return `
+            <div class="glass-card" style="padding:16px; display:flex; flex-direction:column; justify-content:space-between; border-radius:14px; background:rgba(255,255,255,0.04);">
+                <div>
+                    <span class="user-custom-title" style="background:${item.bg || 'var(--accent-purple)'}; padding:4px 10px; border-radius:12px; font-size:0.9rem; font-weight:bold; display:inline-block; margin-bottom:8px;">${escapeHtml(item.name)}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px;">
+                    ${isEquipped 
+                        ? '<span style="color:#4caf50; font-weight:bold; font-size:0.85rem;">✨ 현재 장착 중</span>' 
+                        : `<button class="btn-primary btn-sm" onclick="equipTitleFromInv('${escapeHtml(item.name)}', '${escapeHtml(item.bg)}')">장착하기</button>`}
+                    <button class="btn-secondary btn-sm" onclick="showSellModal()">장터 판매</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function equipTitleFromInv(name, bg) {
+    if (!currentUser) return;
+    currentUser.title = name;
+    currentUser.titleBg = bg;
+    updateUserData();
+    showToast(`'${name}' 칭호를 장착했습니다!`);
+    renderShopUI();
+}
+
+// ===== ADMIN GIFT LOGIC =====
+function adminSendGift(userId) {
+    const users = getStorageUsers();
+    const u = users[userId];
+    if (!u) return;
+
+    const giftType = prompt(`[@${userId}] 님에게 전달할 선물 유형을 선택하세요:\n1: 🎁 한정판 칭호 선물\n2: 🪙 자유 코인 선물`, '1');
+    if (!giftType) return;
+
+    if (giftType === '1') {
+        const titleName = prompt('부여할 칭호 이름을 입력하세요 (예: 👑 아레나 개발자 수호자):', '👑 최우수 승부사');
+        if (!titleName) return;
+        const bg = prompt('칭호 배경 색상 코드를 입력하세요:', 'linear-gradient(135deg, #ff4081, #00e5ff)');
+
+        if (!u.inbox) u.inbox = [];
+        u.inbox.unshift({
+            id: Date.now(),
+            title: '🎁 관리자의 특별 칭호 선물!',
+            content: `최고 관리자로부터 특별 칭호 [${titleName}] 이(가) 도착했습니다!`,
+            item: { id: 'admin_gift_' + Date.now(), name: titleName, bg: bg || 'var(--accent-purple)' },
+            coins: 0,
+            date: new Date().toLocaleTimeString()
+        });
+        saveStorageUsers(users);
+        showToast(`[@${userId}] 님에게 특별 칭호 선물을 전송했습니다!`);
+    } else if (giftType === '2') {
+        const coinAmountStr = prompt('선물할 코인 수량을 입력하세요:', '5000');
+        const coinAmount = parseInt(coinAmountStr, 10);
+        if (isNaN(coinAmount) || coinAmount <= 0) {
+            showToast('올바른 코인 수량을 입력하세요.');
+            return;
+        }
+
+        if (!u.inbox) u.inbox = [];
+        u.inbox.unshift({
+            id: Date.now(),
+            title: '🎁 관리자의 코인 선물!',
+            content: `최고 관리자로부터 🪙 ${coinAmount.toLocaleString()} 코인 보너스가 도착했습니다!`,
+            coins: coinAmount,
+            date: new Date().toLocaleTimeString()
+        });
+        saveStorageUsers(users);
+        showToast(`[@${userId}] 님에게 ${coinAmount.toLocaleString()} 코인 선물을 전송했습니다!`);
+    }
+}
+
+// ===== INBOX LOGIC =====
+function renderInbox() {
+    if (!currentUser) return;
+    const list = document.getElementById('inbox-list');
+    if (!list) return;
+
+    const inbox = currentUser.inbox || [];
+    if (inbox.length === 0) {
+        list.innerHTML = '<div class="room-empty">도착한 선물이나 알림이 없습니다.</div>';
+        return;
+    }
+
+    list.innerHTML = inbox.map((item, idx) => {
+        return `
+            <div class="glass-card" style="padding:16px; margin-bottom:12px; border-radius:14px; background:rgba(255,255,255,0.04);">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <strong style="font-size:1rem; color:var(--accent-yellow);">${escapeHtml(item.title)}</strong>
+                    <span style="font-size:0.75rem; color:var(--text-secondary);">${item.date || ''}</span>
+                </div>
+                <p style="font-size:0.9rem; margin:8px 0; color:#eee;">${escapeHtml(item.content)}</p>
+                <div style="display:flex; justify-content:flex-end;">
+                    <button class="btn-primary btn-sm" onclick="claimGift(${idx})">🎁 받기 / 수령</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function claimGift(index) {
+    if (!currentUser || !currentUser.inbox) return;
+    const item = currentUser.inbox[index];
+    if (!item) return;
+
+    if (item.coins > 0) {
+        currentUser.coins += item.coins;
+        showToast(`🪙 ${item.coins.toLocaleString()} 코인을 받았습니다!`);
+    }
+
+    if (item.item) {
+        if (!currentUser.inventory) currentUser.inventory = [];
+        currentUser.inventory.push(item.item);
+        currentUser.title = item.item.name;
+        currentUser.titleBg = item.item.bg;
+        showToast(`'${item.item.name}' 칭호를 수령하여 자동 장착했습니다! 🎉`);
+    }
+
+    currentUser.inbox.splice(index, 1);
+    updateUserData();
+    updateLobbyUI();
+    renderInbox();
+}
+
 function escapeHtml(str) {
-    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    return str ? str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;") : '';
 }
 
 // ===== INITIALIZATION =====

@@ -93,6 +93,7 @@
                 </div>
             </div>
             <div class="top-bar-right">
+                <button class="btn-icon" onclick="showScreen('screen-inbox')" title="선물함" style="position:relative; margin-right:8px;">🎁 <span class="inbox-badge hidden" id="inbox-badge" style="position:absolute; top:-4px; right:-4px; background:#ff4081; color:#fff; border-radius:50%; width:16px; height:16px; font-size:10px; font-weight:bold; display:flex; align-items:center; justify-content:center;">0</span></button>
                 <span class="user-name" id="user-name">유저</span>
                 <button class="btn-icon" onclick="logout()" title="로그아웃">🚪</button>
             </div>
@@ -123,7 +124,14 @@
                 <button class="lobby-card" onclick="showScreen('screen-rooms')">
                     <div class="lobby-card-icon">👥</div>
                     <div class="lobby-card-title">유저 대전방</div>
-                    <div class="lobby-card-desc">대전방 만들기 & 2인 플레이</div>
+                    <div class="lobby-card-desc">대전방 만들기 & 2인 실시간 플레이</div>
+                    <div class="lobby-card-arrow">→</div>
+                </button>
+                <!-- Shop & Marketplace -->
+                <button class="lobby-card" onclick="showScreen('screen-shop')">
+                    <div class="lobby-card-icon">🛍️</div>
+                    <div class="lobby-card-title">상점 & 유저 장터</div>
+                    <div class="lobby-card-desc">칭호/아이템 구매 & 유저간 거래</div>
                     <div class="lobby-card-arrow">→</div>
                 </button>
                 <!-- Profile -->
@@ -151,7 +159,7 @@
                 <button class="lobby-card admin-card hidden" id="admin-lobby-card" onclick="showScreen('screen-admin')">
                     <div class="lobby-card-icon">⚙️</div>
                     <div class="lobby-card-title">관리자 대시보드</div>
-                    <div class="lobby-card-desc">계정/대전방 관리 & 코인 지급</div>
+                    <div class="lobby-card-desc">계정/선물 지급 & 대전방/유저 관리</div>
                     <div class="lobby-card-arrow">→</div>
                 </button>
             </div>
@@ -472,6 +480,79 @@
             <div class="admin-user-list" id="admin-user-list">
                 <!-- 동적으로 관리자 유저 카드 리스트 생성 -->
             </div>
+        </div>
+    </div>
+
+    <!-- ===== SHOP & MARKET SCREEN ===== -->
+    <div class="screen" id="screen-shop">
+        <header class="top-bar">
+            <button class="btn-back" onclick="showScreen('screen-lobby')">← 뒤로</button>
+            <span class="top-bar-title">🛍️ 칭호 상점 & 유저 장터</span>
+            <div class="coin-display">
+                <span class="coin-icon">🪙</span>
+                <span class="coin-amount" id="shop-coin-display">1,000</span>
+            </div>
+        </header>
+        <div class="shop-container" style="max-width:900px; margin:20px auto; padding:0 15px;">
+            <div class="auth-tabs" style="margin-bottom: 20px;">
+                <button class="auth-tab active" id="tab-shop-buy" onclick="switchShopTab('buy')">🏪 공식 칭호 상점</button>
+                <button class="auth-tab" id="tab-shop-market" onclick="switchShopTab('market')">⚖️ 유저 거래 장터</button>
+                <button class="auth-tab" id="tab-shop-bag" onclick="switchShopTab('bag')">🎒 내 가방 & 보유 칭호</button>
+            </div>
+
+            <!-- 1. 공식 칭호 상점 -->
+            <div class="shop-tab-content" id="shop-tab-buy">
+                <div class="shop-grid" id="official-shop-list" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:15px;"></div>
+            </div>
+
+            <!-- 2. 유저 거래 장터 -->
+            <div class="shop-tab-content hidden" id="shop-tab-market">
+                <div class="market-header" style="margin-bottom: 15px; display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:12px 18px; border-radius:12px; border:1px solid rgba(255,255,255,0.1);">
+                    <div>
+                        <h3 style="font-size: 1.1rem; margin:0;">⚖️ 유저들이 등록한 칭호 매물</h3>
+                        <p style="font-size: 0.8rem; color:var(--text-secondary); margin:4px 0 0 0;">다른 유저가 올려둔 칭호를 구매하거나 내 칭호를 판매할 수 있습니다.</p>
+                    </div>
+                    <button class="btn-primary btn-sm" onclick="showSellModal()">+ 매물 등록하기</button>
+                </div>
+                <div class="shop-grid" id="user-market-list" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:15px;"></div>
+            </div>
+
+            <!-- 3. 내 가방 -->
+            <div class="shop-tab-content hidden" id="shop-tab-bag">
+                <h3 style="font-size: 1.1rem; margin-bottom: 15px;">내가 보유한 칭호 목록</h3>
+                <div class="shop-grid" id="inventory-list" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:15px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sell Modal -->
+    <div class="create-room-modal hidden" id="sell-market-modal">
+        <div class="glass-card modal-card">
+            <h3>⚖️ 유저 장터 매물 등록</h3>
+            <p style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:15px;">보유 중인 칭호를 원하는 코인 가격에 유저 장터에 판매 등록합니다.</p>
+            <div class="input-group">
+                <label>판매할 칭호 선택</label>
+                <select id="sell-title-select" style="width:100%; padding:10px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.2); color:#fff; border-radius:8px;"></select>
+            </div>
+            <div class="input-group">
+                <label>판매 가격 (코인 🪙)</label>
+                <input type="number" id="sell-price-input" placeholder="예: 2500" min="10" step="10">
+            </div>
+            <div class="modal-actions">
+                <button class="btn-primary" onclick="confirmListOnMarket()">장터에 등록</button>
+                <button class="btn-secondary" onclick="hideSellModal()">취소</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== INBOX SCREEN (선물함 및 알림) ===== -->
+    <div class="screen" id="screen-inbox">
+        <header class="top-bar">
+            <button class="btn-back" onclick="showScreen('screen-lobby')">← 뒤로</button>
+            <span class="top-bar-title">🎁 선물함 및 알림</span>
+        </header>
+        <div class="inbox-container" style="max-width:600px; margin:20px auto; padding:0 15px;">
+            <div class="inbox-list" id="inbox-list"></div>
         </div>
     </div>
 
