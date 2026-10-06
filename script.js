@@ -1516,19 +1516,33 @@ function showSellModal(selectedItemId) {
         if (!inv.id) inv.id = 'inv_' + Date.now() + '_' + idx;
     });
 
-    const select = document.getElementById('sell-title-select');
-    select.innerHTML = currentUser.inventory.map(item => `
-        <option value="${item.id}" ${String(selectedItemId) === String(item.id) ? 'selected' : ''}>
-            ${escapeHtml(item.name)}
-        </option>
-    `).join('');
+    if (selectedItemId) {
+        sellTitleDirectly(selectedItemId);
+        return;
+    }
 
-    document.getElementById('sell-price-input').value = '';
-    document.getElementById('sell-market-modal').classList.remove('hidden');
+    if (currentUser.inventory.length === 1) {
+        sellTitleDirectly(currentUser.inventory[0].id);
+        return;
+    }
+
+    const optionsText = currentUser.inventory.map((item, idx) => `${idx + 1}: ${item.name}`).join('\n');
+    const choiceStr = prompt(`유저 장터에 판매 등록할 칭호 번호를 선택하세요:\n${optionsText}`, '1');
+    if (choiceStr === null) return;
+
+    const choiceIdx = parseInt(choiceStr, 10) - 1;
+    if (isNaN(choiceIdx) || choiceIdx < 0 || choiceIdx >= currentUser.inventory.length) {
+        showToast('올바른 칭호 번호를 선택해주세요.');
+        return;
+    }
+
+    const selectedItem = currentUser.inventory[choiceIdx];
+    sellTitleDirectly(selectedItem.id);
 }
 
 function hideSellModal() {
-    document.getElementById('sell-market-modal').classList.add('hidden');
+    const modal = document.getElementById('sell-market-modal');
+    if (modal) modal.classList.add('hidden');
 }
 
 function confirmListOnMarket() {
