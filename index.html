@@ -127,6 +127,13 @@
                     <div class="lobby-card-desc">대전방 만들기 & 2인 실시간 플레이</div>
                     <div class="lobby-card-arrow">→</div>
                 </button>
+                <!-- Snail Race Mini-Game -->
+                <button class="lobby-card" onclick="showScreen('screen-snail-race')">
+                    <div class="lobby-card-icon">🐌</div>
+                    <div class="lobby-card-title">달팽이 레이스</div>
+                    <div class="lobby-card-desc">1등 달팽이 맞추기 & 3배 코인 획득!</div>
+                    <div class="lobby-card-arrow">→</div>
+                </button>
                 <!-- Shop & Marketplace -->
                 <button class="lobby-card" onclick="showScreen('screen-shop')">
                     <div class="lobby-card-icon">🛍️</div>
@@ -530,6 +537,84 @@
             <div class="shop-tab-content hidden" id="shop-tab-bag">
                 <h3 style="font-size: 1.1rem; margin-bottom: 15px;">내가 보유한 칭호 목록</h3>
                 <div class="shop-grid" id="inventory-list" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:15px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== SNAIL RACE SCREEN (달팽이 경주 미니게임) ===== -->
+    <div class="screen" id="screen-snail-race">
+        <header class="top-bar">
+            <button class="btn-back" onclick="showScreen('screen-lobby')">← 로비</button>
+            <div class="coin-display">
+                <span class="coin-icon">🪙</span>
+                <span class="coin-amount" id="snail-coin-display">1,000</span>
+            </div>
+        </header>
+
+        <div class="glass-card" style="padding:20px; text-align:center; margin-bottom:15px;">
+            <h2 style="font-size:1.6rem; font-weight:900; margin-bottom:6px;">🐌 미니게임: 달팽이 레이스</h2>
+            <p style="font-size:0.85rem; color:var(--text-secondary);">1등으로 들어올 달팽이를 맞추세요! 예측 성공 시 배팅금의 <span style="color:var(--accent-yellow); font-weight:bold;">3배</span> 획득!</p>
+        </div>
+
+        <!-- Bet & Snail Pick Controls -->
+        <div class="glass-card" style="padding:16px; margin-bottom:15px;">
+            <h4 style="margin-bottom:10px; font-size:0.95rem;">1. 우승할 달팽이 선택</h4>
+            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; margin-bottom:15px;" id="snail-pick-btns">
+                <button class="btn-secondary active" onclick="selectSnail(1)" id="snail-btn-1" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px; border:2px solid var(--accent-pink);">
+                    <span style="font-size:1.6rem;">🐌</span>
+                    <span style="font-weight:bold; font-size:0.85rem;">1번 스피디</span>
+                </button>
+                <button class="btn-secondary" onclick="selectSnail(2)" id="snail-btn-2" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px;">
+                    <span style="font-size:1.6rem;">🐌</span>
+                    <span style="font-weight:bold; font-size:0.85rem;">2번 터보</span>
+                </button>
+                <button class="btn-secondary" onclick="selectSnail(3)" id="snail-btn-3" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px;">
+                    <span style="font-size:1.6rem;">🐌</span>
+                    <span style="font-weight:bold; font-size:0.85rem;">3번 썬더</span>
+                </button>
+            </div>
+
+            <h4 style="margin-bottom:10px; font-size:0.95rem;">2. 배팅 코인 설정</h4>
+            <div class="bet-presets" style="margin-bottom:10px;">
+                <button class="bet-preset" onclick="setSnailBet(100)">100</button>
+                <button class="bet-preset" onclick="setSnailBet(500)">500</button>
+                <button class="bet-preset" onclick="setSnailBet(1000)">1,000</button>
+                <button class="bet-preset" onclick="setSnailBet(5000)">5,000</button>
+                <button class="bet-preset bet-preset-allin" onclick="setSnailBetAll()">🔥 올인</button>
+            </div>
+            <div class="bet-custom" style="max-width:100%; margin-bottom:15px;">
+                <input type="number" id="snail-bet-input" placeholder="배팅 코인 직접 입력" min="10" value="500" style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--glass-border); border-radius:8px; color:#fff;">
+            </div>
+
+            <button class="btn-primary" id="start-snail-race-btn" onclick="startSnailRace()">🚀 경주 시작! (배팅하기)</button>
+        </div>
+
+        <!-- Racetrack Visual -->
+        <div class="glass-card" style="padding:16px; display:flex; flex-direction:column; gap:12px;" id="snail-track-container">
+            <div id="snail-race-status" style="text-align:center; font-weight:bold; font-size:0.95rem; color:var(--accent-cyan);">🏁 달팽이들이 출발 선에서 대기 중입니다!</div>
+
+            <!-- Track 1 -->
+            <div style="background:rgba(0,0,0,0.3); border-radius:10px; padding:8px 12px; position:relative;">
+                <div style="font-size:0.8rem; font-weight:bold; color:var(--accent-pink); margin-bottom:4px;">1번 스피디 🔴</div>
+                <div style="height:40px; position:relative; border-right:4px dashed var(--accent-yellow); background:linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.08)); border-radius:6px; overflow:hidden;">
+                    <div id="snail-runner-1" style="position:absolute; left:0%; top:2px; font-size:1.8rem; transition: left 0.15s ease-out;">🐌</div>
+                </div>
+            </div>
+
+            <!-- Track 2 -->
+            <div style="background:rgba(0,0,0,0.3); border-radius:10px; padding:8px 12px; position:relative;">
+                <div style="font-size:0.8rem; font-weight:bold; color:var(--accent-cyan); margin-bottom:4px;">2번 터보 🔵</div>
+                <div style="height:40px; position:relative; border-right:4px dashed var(--accent-yellow); background:linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.08)); border-radius:6px; overflow:hidden;">
+                    <div id="snail-runner-2" style="position:absolute; left:0%; top:2px; font-size:1.8rem; transition: left 0.15s ease-out;">🐌</div>
+                </div>
+            </div>
+
+            <!-- Track 3 -->
+            <div style="background:rgba(0,0,0,0.3); border-radius:10px; padding:8px 12px; position:relative;">
+                <div style="font-size:0.8rem; font-weight:bold; color:var(--win-color); margin-bottom:4px;">3번 썬더 🟢</div>
+                <div style="height:40px; position:relative; border-right:4px dashed var(--accent-yellow); background:linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.08)); border-radius:6px; overflow:hidden;">
+                    <div id="snail-runner-3" style="position:absolute; left:0%; top:2px; font-size:1.8rem; transition: left 0.15s ease-out;">🐌</div>
+                </div>
             </div>
         </div>
     </div>

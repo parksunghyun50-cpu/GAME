@@ -111,6 +111,8 @@ function showScreen(screenId) {
         renderChatMessages();
     } else if (screenId === 'screen-admin') {
         renderAdminDashboard();
+    } else if (screenId === 'screen-snail-race') {
+        renderSnailRaceUI();
     }
 }
 
@@ -1854,6 +1856,164 @@ function claimGift(index) {
 
 function escapeHtml(str) {
     return str ? str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;") : '';
+}
+
+// ===== SNAIL RACE MINI-GAME LOGIC (달팽이 경주) =====
+let selectedSnailId = 1;
+let isSnailRacing = false;
+
+function renderSnailRaceUI() {
+    if (!currentUser) return;
+    const coinDisplay = document.getElementById('snail-coin-display');
+    if (coinDisplay) coinDisplay.textContent = currentUser.coins.toLocaleString();
+}
+
+function selectSnail(snailId) {
+    if (isSnailRacing) return;
+    selectedSnailId = snailId;
+    [1, 2, 3].forEach(id => {
+        const btn = document.getElementById(`snail-btn-${id}`);
+        if (btn) {
+            btn.classList.toggle('active', id === snailId);
+            btn.style.border = (id === snailId) ? '2px solid var(--accent-pink)' : 'none';
+        }
+    });
+}
+
+function setSnailBet(amount) {
+    if (isSnailRacing) return;
+    const input = document.getElementById('snail-bet-input');
+    if (input) input.value = amount;
+}
+
+function setSnailBetAll() {
+    if (isSnailRacing || !currentUser) return;
+    const input = document.getElementById('snail-bet-input');
+    if (input) input.value = Math.max(10, currentUser.coins);
+}
+
+function startSnailRace() {
+    if (!currentUser) return;
+    if (isSnailRacing) {
+        showToast('경주가 이미 진행 중입니다!');
+        return;
+    }
+
+    const input = document.getElementById('snail-bet-input');
+    const bet = parseInt(input.value, 10);
+
+    if (isNaN(bet) || bet <= 0) {
+        showToast('올바른 배팅 코인을 입력하세요!');
+        return;
+    }
+
+    if (currentUser.coins < bet) {
+        showToast('배팅 코인이 부족합니다!');
+        return;
+    }
+
+    // Deduct bet coins
+    currentUser.coins -= bet;
+    updateUserData();
+    renderSnailRaceUI();
+
+    isSnailRacing = true;
+    const startBtn = document.getElementById('start-snail-race-btn');
+    if (startBtn) {
+        startBtn.disabled = true;
+        startBtn.style.opacity = '0.5';
+    }
+
+    const statusEl = document.getElementById('snail-race-status');
+    if (statusEl) statusEl.textContent = '🚀 출발! 3마리의 달팽이가 맹렬히 달리고 있습니다!';
+
+    const positions = [0, 0, 0];
+    const runners = [
+        document.getElementById('snail-runner-1'),
+        document.getElementById('snail-runner-2'),
+        document.getElementById('snail-runner-3')
+    ];
+
+    runners.forEach(r => {
+        if (r) r.style.left = '0%';
+    });
+
+    const snailNames = ['1번 스피디 🔴', '2번 터보 🔵', '3번 썬더 🟢'];
+
+    const raceInterval = setInterval(() => {
+        let maxPos = 0;
+        let leadingIdx = 0;
+
+        for (let i = 0; i < 3; i++) {
+            const boost = Math.random() < 0.18 ? 5 : 0;
+            positions[i] += (Math.random() * 5.5 + 1.5 + boost);
+            if (positions[i] > 92) positions[i] = 92;
+
+            if (runners[i]) runners[i].style.left = positions[i] + '%';
+
+            if (positions[i] > maxPos) {
+                maxPos = positions[i];
+                leadingIdx = i;
+            }
+        }
+
+        if (statusEl) {
+            const comments = [
+                `⚡ ${snailNames[leadingIdx]}가 선두로 치고 나갑니다!`,
+                `🔥 치열한 접전! ${snailNames[leadingIdx]}가 아슬아슬하게 앞서갑니다!`,
+                `💥 ${snailNames[leadingIdx]}의 질주! 결승선이 보입니다!`
+            ];
+            statusEl.textContent = comments[Math.floor(Math.random() * comments.length)];
+        }
+
+        // Check if leading snail reached finish line (90%+)
+        if (maxPos >= 90) {
+            clearInterval(raceInterval);
+
+            // Determine rankings
+            const ranked = [0, 1, 2].sort((a, b) => positions[b] - positions[a]);
+            const winnerSnailId = ranked[0] + 1; // 1, 2, or 3
+            const winnerName = snailNames[ranked[0]];
+
+            const isWin = (selectedSnailId === winnerSnailId);
+            const prize = isWin ? (bet * 3) : 0;
+
+            setTimeout(() => {
+                if (isWin) {
+                    currentUser.coins += prize;
+                    currentUser.wins += 1;
+                    if (statusEl) {
+                        statusEl.innerHTML = `<span style="color:#4caf50; font-size:1.1rem;">🎉 축하합니다! ${winnerName} 1등 결승선 통과!<br>배팅 성공으로 🪙 ${prize.toLocaleString()} 코인을 획득하셨습니다! (3배)</span>`;
+                    }
+                    showToast(`🎉 1등 예측 성공! ${prize.toLocaleString()} 코인 획득!`);
+                } else {
+                    currentUser.losses += 1;
+                    if (statusEl) {
+                        statusEl.innerHTML = `<span style="color:var(--accent-pink); font-size:1.05rem;">😢 ${winnerName}가 1등으로 들어왔습니다.<br>예측 실패로 ${bet.toLocaleString()} 코인을 잃었습니다.</span>`;
+                    }
+                    showToast(`😢 아쉽게도 ${winnerName}가 1등으로 들어왔습니다.`);
+                }
+
+                if (!currentUser.history) currentUser.history = [];
+                currentUser.history.unshift({
+                    date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    vs: `🐌 달팽이 레이스 (${selectedSnailId}번 선택)`,
+                    outcome: isWin ? '승리' : '패배',
+                    bet: isWin ? (prize - bet) : -bet
+                });
+                if (currentUser.history.length > 20) currentUser.history.pop();
+
+                updateUserData();
+                renderSnailRaceUI();
+
+                isSnailRacing = false;
+                if (startBtn) {
+                    startBtn.disabled = false;
+                    startBtn.style.opacity = '1';
+                }
+            }, 300);
+        }
+    }, 180);
 }
 
 // ===== INITIALIZATION =====
