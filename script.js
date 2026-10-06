@@ -58,10 +58,13 @@ function getStorageUsers() {
         users['lucky'] = { id: 'lucky', nickname: '행운아', pw: '123456', coins: 5500, wins: 15, losses: 8, draws: 1, history: [], inventory: [], inbox: [] };
     }
 
-    // 모든 유저의 inventory 및 inbox 배열 보장
+    // 모든 유저의 inventory 및 inbox 배열 보장 및 아이템 ID 채우기
     Object.keys(users).forEach(id => {
         if (!users[id].inventory) users[id].inventory = [];
         if (!users[id].inbox) users[id].inbox = [];
+        users[id].inventory.forEach((inv, idx) => {
+            if (!inv.id) inv.id = 'inv_' + Date.now() + '_' + idx;
+        });
     });
 
     localStorage.setItem('rps_arena_users', JSON.stringify(users));
@@ -1503,13 +1506,24 @@ function renderUserMarket() {
     }).join('');
 }
 
-function showSellModal() {
+function showSellModal(selectedItemId) {
     if (!currentUser || !currentUser.inventory || currentUser.inventory.length === 0) {
         showToast('판매 등록할 보유 칭호가 없습니다! 상점에서 칭호를 구매해보세요.');
         return;
     }
+
+    currentUser.inventory.forEach((inv, idx) => {
+        if (!inv.id) inv.id = 'inv_' + Date.now() + '_' + idx;
+    });
+
     const select = document.getElementById('sell-title-select');
-    select.innerHTML = currentUser.inventory.map(item => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('');
+    select.innerHTML = currentUser.inventory.map(item => `
+        <option value="${item.id}" ${String(selectedItemId) === String(item.id) ? 'selected' : ''}>
+            ${escapeHtml(item.name)}
+        </option>
+    `).join('');
+
+    document.getElementById('sell-price-input').value = '';
     document.getElementById('sell-market-modal').classList.remove('hidden');
 }
 
@@ -1528,13 +1542,27 @@ function confirmListOnMarket() {
         return;
     }
 
-    const itemIndex = currentUser.inventory.findIndex(inv => inv.id === itemSelectId);
+    if (!currentUser.inventory) currentUser.inventory = [];
+    currentUser.inventory.forEach((inv, idx) => {
+        if (!inv.id) inv.id = 'inv_' + Date.now() + '_' + idx;
+    });
+
+    const itemIndex = currentUser.inventory.findIndex(inv => String(inv.id) === String(itemSelectId));
     if (itemIndex === -1) {
-        showToast('선택한 칭호를 찾을 수 없습니다.');
+        showToast('선택한 칭호를 가방에서 찾을 수 없습니다.');
         return;
     }
 
     const titleObj = currentUser.inventory.splice(itemIndex, 1)[0];
+
+    if (currentUser.title === titleObj.name) {
+        const stillHas = currentUser.inventory.some(inv => inv.name === titleObj.name);
+        if (!stillHas) {
+            currentUser.title = '';
+            currentUser.titleBg = '';
+        }
+    }
+
     const market = getStorageMarket();
     const newListing = {
         id: Date.now(),
@@ -1549,7 +1577,57 @@ function confirmListOnMarket() {
     saveStorageMarket(market);
     updateUserData();
     hideSellModal();
-    showToast(`'${titleObj.name}' 칭호가 ${price.toLocaleString()} 코인에 장터 등록되었습니다!`);
+    showToast(`'${titleObj.name}' 칭호가 ${price.toLocaleString()} 코인에 장터 등록되었습니다! 🎉`);
+    switchShopTab('market');
+}
+
+function sellTitleDirectly(itemId) {
+    if (!currentUser || !currentUser.inventory) return;
+
+    currentUser.inventory.forEach((inv, idx) => {
+        if (!inv.id) inv.id = 'inv_' + Date.now() + '_' + idx;
+    });
+
+    const item = currentUser.inventory.find(inv => String(inv.id) === String(itemId));
+    if (!item) {
+        showToast('선택한 칭호를 가방에서 찾을 수 없습니다.');
+        return;
+    }
+
+    const priceStr = prompt(`[${item.name}] 칭호를 유저 장터에 판매 등록합니다.\n원하는 판매 가격(코인 🪙)을 직접 입력하세요:`, '3000');
+    if (priceStr === null) return;
+
+    const price = parseInt(priceStr, 10);
+    if (isNaN(price) || price <= 0) {
+        showToast('올바른 판매 가격(1 이상의 숫자)을 입력하세요!');
+        return;
+    }
+
+    currentUser.inventory = currentUser.inventory.filter(inv => String(inv.id) !== String(itemId));
+
+    if (currentUser.title === item.name) {
+        const stillHas = currentUser.inventory.some(inv => inv.name === item.name);
+        if (!stillHas) {
+            currentUser.title = '';
+            currentUser.titleBg = '';
+        }
+    }
+
+    const market = getStorageMarket();
+    const newListing = {
+        id: Date.now(),
+        sellerId: currentUser.id,
+        sellerName: currentUser.nickname,
+        title: item,
+        price: price,
+        date: new Date().toLocaleTimeString()
+    };
+
+    market.unshift(newListing);
+    saveStorageMarket(market);
+    updateUserData();
+
+    showToast(`'${item.name}' 칭호가 ${price.toLocaleString()} 코인에 장터 판매 등록되었습니다! 🎉`);
     switchShopTab('market');
 }
 
@@ -1574,6 +1652,7 @@ function buyMarketTitle(marketId) {
 
     currentUser.coins -= listing.price;
     if (!currentUser.inventory) currentUser.inventory = [];
+    if (!listing.title.id) listing.title.id = 'inv_' + Date.now();
     currentUser.inventory.push(listing.title);
 
     currentUser.title = listing.title.name;
@@ -1611,6 +1690,7 @@ function cancelMarketListing(marketId) {
     saveStorageMarket(market);
 
     if (!currentUser.inventory) currentUser.inventory = [];
+    if (!listing.title.id) listing.title.id = 'inv_' + Date.now();
     currentUser.inventory.push(listing.title);
     updateUserData();
 
@@ -1622,7 +1702,12 @@ function renderInventory() {
     const list = document.getElementById('inventory-list');
     if (!list) return;
 
-    const items = currentUser.inventory || [];
+    if (!currentUser.inventory) currentUser.inventory = [];
+    currentUser.inventory.forEach((inv, idx) => {
+        if (!inv.id) inv.id = 'inv_' + Date.now() + '_' + idx;
+    });
+
+    const items = currentUser.inventory;
     if (items.length === 0) {
         list.innerHTML = '<div class="room-empty" style="grid-column: 1 / -1;">보유 중인 칭호가 없습니다.<br>상점이나 장터에서 칭호를 구해보세요!</div>';
         return;
@@ -1635,11 +1720,11 @@ function renderInventory() {
                 <div>
                     <span class="user-custom-title" style="background:${item.bg || 'var(--accent-purple)'}; padding:4px 10px; border-radius:12px; font-size:0.9rem; font-weight:bold; display:inline-block; margin-bottom:8px;">${escapeHtml(item.name)}</span>
                 </div>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; flex-wrap:wrap; gap:6px;">
                     ${isEquipped 
                         ? '<span style="color:#4caf50; font-weight:bold; font-size:0.85rem;">✨ 현재 장착 중</span>' 
                         : `<button class="btn-primary btn-sm" onclick="equipTitleFromInv('${escapeHtml(item.name)}', '${escapeHtml(item.bg)}')">장착하기</button>`}
-                    <button class="btn-secondary btn-sm" onclick="showSellModal()">장터 판매</button>
+                    <button class="btn-secondary btn-sm" onclick="sellTitleDirectly('${item.id}')" style="background:var(--accent-pink);">🏷️ 장터 판매 (가격을 직접 입력)</button>
                 </div>
             </div>
         `;
