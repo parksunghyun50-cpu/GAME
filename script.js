@@ -593,7 +593,50 @@ function showStreakBanner(streak) {
     }
 }
 
-// ===== ROOMS & PVP LOGIC =====
+// ===== ROOMS & REAL-TIME PVP LOGIC =====
+let syncChannel = null;
+try {
+    syncChannel = new BroadcastChannel('rps_arena_sync');
+    syncChannel.onmessage = (event) => {
+        handleRealtimeMessage(event.data);
+    };
+} catch (e) {
+    console.log('BroadcastChannel not supported');
+}
+
+window.addEventListener('storage', (e) => {
+    if (e.key === 'rps_arena_rooms') {
+        onRoomDataChanged();
+    }
+});
+
+// Periodic sync loop for active room screens (400ms)
+setInterval(() => {
+    onRoomDataChanged();
+}, 400);
+
+function broadcastRoomChange(type, payload) {
+    if (syncChannel) {
+        syncChannel.postMessage({ type, payload, time: Date.now() });
+    }
+}
+
+function handleRealtimeMessage(msg) {
+    if (!msg) return;
+    onRoomDataChanged();
+}
+
+function onRoomDataChanged() {
+    const activeScreen = document.querySelector('.screen.active');
+    if (!activeScreen) return;
+
+    if (activeScreen.id === 'screen-rooms') {
+        renderRoomList();
+    } else if (activeScreen.id === 'screen-pvp' && currentRoom) {
+        syncActiveRoomState();
+    }
+}
+
 function setRoomBet(amount) {
     roomBet = amount;
     document.getElementById('room-bet-value').textContent = roomBet.toLocaleString();
@@ -624,27 +667,34 @@ function createRoom() {
         bet: roomBet,
         guestId: null,
         guestName: null,
-        status: 'waiting'
+        status: 'waiting', // 'waiting' | 'playing' | 'result'
+        hostChoice: null,
+        guestChoice: null,
+        rematchHost: false,
+        rematchGuest: false,
+        updatedAt: Date.now()
     };
     rooms.unshift(newRoom);
     saveStorageRooms(rooms);
+    broadcastRoomChange('ROOM_CREATED', newRoom);
 
     hideCreateRoom();
     document.getElementById('room-name-input').value = '';
     renderRoomList();
     showToast('대전방이 성공적으로 생성되었습니다!');
 
-    // 생성된 방에 바로 대기 상태로 입장
     currentRoom = newRoom;
-    startPvpGame(newRoom, true);
+    startPvpGame(newRoom);
 }
 
 function renderRoomList() {
     const list = document.getElementById('room-list');
     const coinsDisplay = document.getElementById('rooms-coin-display');
-    if (currentUser) coinsDisplay.textContent = currentUser.coins.toLocaleString();
+    if (currentUser && coinsDisplay) coinsDisplay.textContent = currentUser.coins.toLocaleString();
 
     const rooms = getStorageRooms();
+    if (!list) return;
+
     if (rooms.length === 0) {
         list.innerHTML = '<div class="room-empty">생성된 대전방이 없습니다.<br>방을 만들어 다른 플레이어를 기다려보세요!</div>';
         return;
@@ -652,13 +702,15 @@ function renderRoomList() {
 
     list.innerHTML = rooms.map(r => {
         const isMyRoom = currentUser && r.hostId === currentUser.id;
-        const statusBadge = r.status === 'playing' ? '<span class="status-playing">게임 중</span>' : '<span class="status-waiting">대기 중</span>';
+        const statusBadge = r.status === 'playing' 
+            ? '<span class="status-playing">게임 중</span>' 
+            : (r.status === 'result' ? '<span class="status-playing">결과 발표</span>' : '<span class="status-waiting">대기 중</span>');
         
         return `
             <div class="room-card glass-card">
                 <div class="room-info">
                     <div class="room-card-title">${escapeHtml(r.title)} ${statusBadge}</div>
-                    <div class="room-card-meta">방장: ${escapeHtml(r.hostName)} | 배팅: 🪙 ${r.bet.toLocaleString()}</div>
+                    <div class="room-card-meta">방장: ${escapeHtml(r.hostName)} ${r.guestName ? '| 상대: ' + escapeHtml(r.guestName) : ''} | 배팅: 🪙 ${r.bet.toLocaleString()}</div>
                 </div>
                 <div class="room-card-btn-group">
                     <button class="btn-primary btn-sm" onclick="joinRoom(${r.id})">${isMyRoom ? '방 입장' : '참가하기'}</button>
@@ -673,6 +725,7 @@ function deleteRoom(roomId) {
     let rooms = getStorageRooms();
     rooms = rooms.filter(r => r.id !== roomId);
     saveStorageRooms(rooms);
+    broadcastRoomChange('ROOM_DELETED', roomId);
     renderRoomList();
     showToast('대전방이 삭제되었습니다.');
 }
@@ -680,95 +733,171 @@ function deleteRoom(roomId) {
 function joinRoom(roomId) {
     if (!currentUser) return;
     const rooms = getStorageRooms();
-    const room = rooms.find(r => r.id === roomId);
-    if (!room) {
+    const roomIndex = rooms.findIndex(r => r.id === roomId);
+    if (roomIndex === -1) {
         showToast('존재하지 않는 방입니다.');
         return;
     }
+    const room = rooms[roomIndex];
+
     if (room.bet > currentUser.coins) {
         showToast('코인이 부족하여 입장할 수 없습니다!');
         return;
     }
 
-    currentRoom = room;
-
-    // 내가 방장이 아니고 도전자일 때
+    // 내가 방장이 아닌 도전자일 때
     if (room.hostId !== currentUser.id) {
+        if (room.guestId && room.guestId !== currentUser.id && room.status === 'playing') {
+            showToast('이미 다른 플레이어가 참가 중인 방입니다.');
+            return;
+        }
         room.guestId = currentUser.id;
         room.guestName = currentUser.nickname;
         room.status = 'playing';
+        room.updatedAt = Date.now();
+        rooms[roomIndex] = room;
         saveStorageRooms(rooms);
+        broadcastRoomChange('PLAYER_JOINED', room);
     }
 
-    startPvpGame(room, room.hostId === currentUser.id);
+    currentRoom = room;
+    startPvpGame(room);
 }
 
-function startPvpGame(room, isHost) {
-    pvpState.betAmount = room.bet;
-    pvpState.p1Choice = null;
-    pvpState.p2Choice = null;
+function inviteBotToRoom() {
+    if (!currentRoom || !currentUser || currentRoom.hostId !== currentUser.id) return;
+    const rooms = getStorageRooms();
+    const roomIndex = rooms.findIndex(r => r.id === currentRoom.id);
+    if (roomIndex === -1) return;
 
-    pvpState.p1Name = room.hostName;
-    pvpState.p2Name = room.guestName ? room.guestName : null;
+    const room = rooms[roomIndex];
+    room.guestId = 'bot_ai';
+    room.guestName = '🤖 AI 봇 (연습용)';
+    room.status = 'playing';
+    const choices = ['scissors', 'rock', 'paper'];
+    room.guestChoice = choices[Math.floor(Math.random() * choices.length)];
+    room.updatedAt = Date.now();
 
-    document.getElementById('pvp-bet-amount').textContent = pvpState.betAmount.toLocaleString();
-    document.getElementById('pvp-p1-name').textContent = pvpState.p1Name;
-    document.getElementById('pvp-p2-name').textContent = pvpState.p2Name || '도전자 대기 중';
-    document.getElementById('pvp-p2-name-pass').textContent = pvpState.p2Name || '도전자';
+    rooms[roomIndex] = room;
+    saveStorageRooms(rooms);
+    broadcastRoomChange('BOT_INVITED', room);
+    showToast('🤖 AI 봇이 대전 상대로 참가했습니다!');
+    startPvpGame(room);
+}
 
-    document.getElementById('pvp-phase-waiting').classList.add('hidden');
-    document.getElementById('pvp-phase-p1').classList.add('hidden');
-    document.getElementById('pvp-phase-pass').classList.add('hidden');
-    document.getElementById('pvp-phase-p2').classList.add('hidden');
-    document.getElementById('pvp-phase-result').classList.add('hidden');
-
-    // 두 명의 플레이어가 모두 갖춰지지 않았을 경우 대기 화면 노출
-    if (!room.guestName) {
-        document.getElementById('pvp-phase-waiting').classList.remove('hidden');
-    } else {
-        document.getElementById('pvp-phase-p1').classList.remove('hidden');
-    }
+function startPvpGame(room) {
+    currentRoom = room;
+    document.getElementById('pvp-bet-amount').textContent = room.bet.toLocaleString();
 
     showScreen('screen-pvp');
+    syncActiveRoomState();
 }
 
-function pvpChoice(playerNum, choice) {
-    if (!currentRoom || !currentRoom.guestName) {
-        showToast('아직 2번 플레이어가 입장하지 않았습니다!');
+function syncActiveRoomState() {
+    if (!currentRoom || !currentUser) return;
+    const rooms = getStorageRooms();
+    const room = rooms.find(r => r.id === currentRoom.id);
+    if (!room) {
+        showToast('방이 삭제되거나 종료되었습니다.');
+        exitRoom();
+        return;
+    }
+    currentRoom = room;
+
+    const isHost = room.hostId === currentUser.id;
+    const myChoice = isHost ? room.hostChoice : room.guestChoice;
+    const opponentChoice = isHost ? room.guestChoice : room.hostChoice;
+    const opponentName = isHost ? (room.guestName || '도전자 대기 중') : room.hostName;
+    const myRoleLabel = isHost ? `나 (${room.hostName})` : `나 (${room.guestName})`;
+
+    const phaseWaiting = document.getElementById('pvp-phase-waiting');
+    const phaseChoice = document.getElementById('pvp-phase-choice');
+    const phaseResult = document.getElementById('pvp-phase-result');
+
+    phaseWaiting.classList.add('hidden');
+    phaseChoice.classList.add('hidden');
+    phaseResult.classList.add('hidden');
+
+    // 1. 방장이 혼자 대기 중인 상태
+    if (!room.guestId) {
+        phaseWaiting.classList.remove('hidden');
         return;
     }
 
-    if (playerNum === 1) {
-        pvpState.p1Choice = choice;
-        document.getElementById('pvp-phase-p1').classList.add('hidden');
-        document.getElementById('pvp-phase-pass').classList.remove('hidden');
-    } else if (playerNum === 2) {
-        pvpState.p2Choice = choice;
-        document.getElementById('pvp-phase-p2').classList.add('hidden');
-        showPvpResult();
+    // 2. 결과 렌더링 상태 (둘 다 선택 완료했거나 status가 result인 경우)
+    if (room.hostChoice && room.guestChoice) {
+        phaseResult.classList.remove('hidden');
+        renderPvpResult(room);
+        return;
+    }
+
+    // 3. 게임 진행 중 (선택 입력 단계)
+    phaseChoice.classList.remove('hidden');
+    document.getElementById('pvp-my-role-name').textContent = myRoleLabel;
+    document.getElementById('pvp-opponent-role-name').textContent = opponentName;
+
+    const choicesContainer = document.getElementById('pvp-choices-container');
+    const waitingOpponentContainer = document.getElementById('pvp-waiting-opponent-choice');
+
+    if (myChoice) {
+        // 내 선택 완료 -> 상대방 대기 중 화면 표시
+        choicesContainer.classList.add('hidden');
+        waitingOpponentContainer.classList.remove('hidden');
+    } else {
+        // 내 선택 미완료 -> 가위바위보 선택 버튼 표시
+        choicesContainer.classList.remove('hidden');
+        waitingOpponentContainer.classList.add('hidden');
     }
 }
 
-function showP2Phase() {
-    document.getElementById('pvp-phase-pass').classList.add('hidden');
-    document.getElementById('pvp-phase-p2').classList.remove('hidden');
+function submitPvpChoice(choice) {
+    if (!currentRoom || !currentUser) return;
+    const rooms = getStorageRooms();
+    const roomIndex = rooms.findIndex(r => r.id === currentRoom.id);
+    if (roomIndex === -1) return;
+
+    const room = rooms[roomIndex];
+    const isHost = room.hostId === currentUser.id;
+
+    if (isHost) {
+        room.hostChoice = choice;
+    } else {
+        room.guestChoice = choice;
+    }
+
+    if (room.guestId === 'bot_ai' && !room.guestChoice) {
+        const choices = ['scissors', 'rock', 'paper'];
+        room.guestChoice = choices[Math.floor(Math.random() * choices.length)];
+    }
+
+    if (room.hostChoice && room.guestChoice) {
+        room.status = 'result';
+    }
+
+    room.updatedAt = Date.now();
+    rooms[roomIndex] = room;
+    saveStorageRooms(rooms);
+    broadcastRoomChange('CHOICE_SUBMITTED', room);
+
+    syncActiveRoomState();
 }
 
-function showPvpResult() {
-    document.getElementById('pvp-phase-result').classList.remove('hidden');
+function renderPvpResult(room) {
+    const isHost = room.hostId === currentUser.id;
+    const p1Name = room.hostName;
+    const p2Name = room.guestName || '도전자';
+    const p1Choice = room.hostChoice;
+    const p2Choice = room.guestChoice;
 
-    const p1Choice = pvpState.p1Choice;
-    const p2Choice = pvpState.p2Choice;
-
-    document.getElementById('pvp-result-p1-name').textContent = pvpState.p1Name;
-    document.getElementById('pvp-result-p2-name').textContent = pvpState.p2Name;
+    document.getElementById('pvp-result-p1-name').textContent = p1Name + ' (방장)';
+    document.getElementById('pvp-result-p2-name').textContent = p2Name + ' (도전자)';
     document.getElementById('pvp-result-p1-hand').textContent = CHOICES[p1Choice].emoji;
     document.getElementById('pvp-result-p2-hand').textContent = CHOICES[p2Choice].emoji;
 
     const resultText = document.getElementById('pvp-result-text');
     const resultCoins = document.getElementById('pvp-result-coins');
 
-    let winner = 0;
+    let winner = 0; // 0: draw, 1: host, 2: guest
     if (p1Choice === p2Choice) {
         winner = 0;
     } else if (CHOICES[p1Choice].beats === p2Choice) {
@@ -777,49 +906,80 @@ function showPvpResult() {
         winner = 2;
     }
 
-    if (winner === 1) {
-        resultText.textContent = `🎉 ${pvpState.p1Name} 승리!`;
-        resultText.className = 'result-text win pop';
-        resultCoins.textContent = `승자 🪙 +${pvpState.betAmount.toLocaleString()} 코인 획득`;
-        if (currentUser.nickname === pvpState.p1Name) {
-            currentUser.coins += pvpState.betAmount;
-            currentUser.wins++;
-        } else {
-            currentUser.coins -= pvpState.betAmount;
-            currentUser.losses++;
-        }
-    } else if (winner === 2) {
-        resultText.textContent = `🎉 ${pvpState.p2Name} 승리!`;
-        resultText.className = 'result-text win pop';
-        resultCoins.textContent = `승자 🪙 +${pvpState.betAmount.toLocaleString()} 코인 획득`;
-        if (currentUser.nickname === pvpState.p2Name) {
-            currentUser.coins += pvpState.betAmount;
-            currentUser.wins++;
-        } else {
-            currentUser.coins -= pvpState.betAmount;
-            currentUser.losses++;
-        }
-    } else {
+    const isWinner = (isHost && winner === 1) || (!isHost && winner === 2);
+    const isLoser = (isHost && winner === 2) || (!isHost && winner === 1);
+
+    if (winner === 0) {
         resultText.textContent = '🤝 무승부!';
         resultText.className = 'result-text draw pop';
         resultCoins.textContent = '배팅 코인 보존';
-        currentUser.draws++;
+        resultCoins.className = 'game-result-coins draw';
+    } else if (isWinner) {
+        resultText.textContent = '🎉 축하합니다! 승리하셨습니다!';
+        resultText.className = 'result-text win pop';
+        resultCoins.textContent = `+${room.bet.toLocaleString()} 🪙 코인 획득!`;
+        resultCoins.className = 'game-result-coins win';
+    } else {
+        resultText.textContent = '😢 아쉽게 패배하셨습니다...';
+        resultText.className = 'result-text lose pop';
+        resultCoins.textContent = `-${room.bet.toLocaleString()} 🪙 차감`;
+        resultCoins.className = 'game-result-coins lose';
     }
 
-    updateUserData();
+    const resultKey = `rps_result_processed_${room.id}_${room.updatedAt}`;
+    if (!localStorage.getItem(resultKey)) {
+        localStorage.setItem(resultKey, 'true');
+
+        if (winner === 0) {
+            currentUser.draws++;
+        } else if (isWinner) {
+            currentUser.coins += room.bet;
+            currentUser.wins++;
+        } else if (isLoser) {
+            currentUser.coins -= room.bet;
+            currentUser.losses++;
+        }
+
+        currentUser.history.unshift({
+            date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            vs: `PVP (${isHost ? p2Name : p1Name})`,
+            playerChoice: isHost ? p1Choice : p2Choice,
+            opponentChoice: isHost ? p2Choice : p1Choice,
+            outcome: winner === 0 ? 'draw' : (isWinner ? 'win' : 'lose'),
+            bet: room.bet
+        });
+        if (currentUser.history.length > 20) currentUser.history.pop();
+
+        updateUserData();
+    }
 }
 
-function pvpRematch() {
-    pvpState.p1Choice = null;
-    pvpState.p2Choice = null;
+function requestPvpRematch() {
+    if (!currentRoom || !currentUser) return;
+    const rooms = getStorageRooms();
+    const roomIndex = rooms.findIndex(r => r.id === currentRoom.id);
+    if (roomIndex === -1) return;
 
-    document.getElementById('pvp-phase-result').classList.add('hidden');
-    document.getElementById('pvp-phase-p1').classList.remove('hidden');
+    const room = rooms[roomIndex];
+    room.hostChoice = null;
+    room.guestChoice = null;
+    room.status = 'playing';
+
+    if (room.guestId === 'bot_ai') {
+        const choices = ['scissors', 'rock', 'paper'];
+        room.guestChoice = choices[Math.floor(Math.random() * choices.length)];
+    }
+
+    room.updatedAt = Date.now();
+    rooms[roomIndex] = room;
+    saveStorageRooms(rooms);
+    broadcastRoomChange('REMATCH_REQUESTED', room);
+
+    syncActiveRoomState();
 }
 
 function exitRoom() {
     if (currentRoom) {
-        // 내가 방장인 경우 방 전체 삭제 처리
         if (currentUser && currentRoom.hostId === currentUser.id) {
             deleteRoom(currentRoom.id);
             showToast('방장이 나갔으므로 대전방이 삭제되었습니다.');
@@ -829,10 +989,6 @@ function exitRoom() {
         currentRoom = null;
     }
     showScreen('screen-rooms');
-}
-
-function endPvp() {
-    exitRoom();
 }
 
 // ===== PROFILE & RANKING =====

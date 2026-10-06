@@ -291,7 +291,7 @@
         </div>
     </div>
 
-    <!-- ===== PVP GAME SCREEN (2인 대전 진행) ===== -->
+    <!-- ===== PVP GAME SCREEN (2인 실시간 대전 진행) ===== -->
     <div class="screen" id="screen-pvp">
         <header class="top-bar">
             <button class="btn-back" onclick="exitRoom()">← 방 나가기</button>
@@ -307,79 +307,53 @@
                     <span class="pvp-pass-icon animate-pulse">⏳</span>
                     <h2>상대 플레이어 대기 중...</h2>
                     <p>다른 플레이어가 이 방에 입장할 때까지 잠시만 기다려주세요!</p>
-                    <p class="pvp-turn-hint">상대가 입장하면 대결이 자동으로 시작됩니다 ⚔️</p>
+                    <p class="pvp-turn-hint">새 탭이나 다른 브라우저에서 동일한 방으로 참가할 수 있습니다 ⚔️</p>
+                    <button class="btn-secondary btn-sm" onclick="inviteBotToRoom()" style="margin-top: 15px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);">🤖 AI 연습 로봇 초대하기</button>
                 </div>
             </div>
 
-            <!-- P1 Turn -->
-            <div class="pvp-phase" id="pvp-phase-p1">
+            <!-- Active Player Choice Phase (내 선택 차례) -->
+            <div class="pvp-phase hidden" id="pvp-phase-choice">
                 <div class="pvp-turn-banner">
-                    <span class="pvp-turn-icon">🎮</span>
-                    <h2 class="pvp-turn-name" id="pvp-p1-name">P1</h2>
-                    <p class="pvp-turn-text">님의 선택 차례입니다</p>
-                    <p class="pvp-turn-hint">비밀스럽게 하나를 선택해주세요 🤫</p>
+                    <span class="pvp-turn-icon">⚔️</span>
+                    <h2 class="pvp-turn-name"><span id="pvp-my-role-name">나 (방장)</span> VS <span id="pvp-opponent-role-name" style="color:var(--accent-yellow);">상대방 (도전자)</span></h2>
+                    <p class="pvp-turn-hint">가위, 바위, 보 중 하나를 선택하세요!</p>
                 </div>
-                <div class="choices-row">
-                    <button class="choice-btn" onclick="pvpChoice(1, 'scissors')">
+                <div class="choices-row" id="pvp-choices-container">
+                    <button class="choice-btn" onclick="submitPvpChoice('scissors')">
                         <span class="choice-emoji">✌️</span>
                         <span class="choice-name">가위</span>
                     </button>
-                    <button class="choice-btn" onclick="pvpChoice(1, 'rock')">
+                    <button class="choice-btn" onclick="submitPvpChoice('rock')">
                         <span class="choice-emoji">✊</span>
                         <span class="choice-name">바위</span>
                     </button>
-                    <button class="choice-btn" onclick="pvpChoice(1, 'paper')">
+                    <button class="choice-btn" onclick="submitPvpChoice('paper')">
                         <span class="choice-emoji">🖐️</span>
                         <span class="choice-name">보</span>
                     </button>
                 </div>
-            </div>
-
-            <!-- Device Pass -->
-            <div class="pvp-phase hidden" id="pvp-phase-pass">
-                <div class="pvp-pass-screen">
-                    <span class="pvp-pass-icon">📱</span>
-                    <h2>기기를 넘겨주세요!</h2>
-                    <p><span id="pvp-p2-name-pass">P2</span>님에게 순서를 넘겨주세요.</p>
-                    <button class="btn-primary" onclick="showP2Phase()">✅ 준비 완료</button>
+                <div class="pvp-waiting-choice hidden" id="pvp-waiting-opponent-choice" style="margin-top: 20px;">
+                    <div class="pvp-pass-screen" style="padding: 20px; background: rgba(255,255,255,0.05); border-radius: 16px;">
+                        <span class="pvp-pass-icon animate-pulse" style="font-size: 2.5rem;">🔒</span>
+                        <h3 style="margin-top: 10px;">선택 완료!</h3>
+                        <p style="color:var(--text-secondary); margin-top: 5px;">상대방이 가위바위보 선택을 마칠 때까지 대기 중입니다... ⏳</p>
+                    </div>
                 </div>
             </div>
 
-            <!-- P2 Turn -->
-            <div class="pvp-phase hidden" id="pvp-phase-p2">
-                <div class="pvp-turn-banner">
-                    <span class="pvp-turn-icon">🎮</span>
-                    <h2 class="pvp-turn-name" id="pvp-p2-name">P2</h2>
-                    <p class="pvp-turn-text">님의 선택 차례입니다</p>
-                </div>
-                <div class="choices-row">
-                    <button class="choice-btn" onclick="pvpChoice(2, 'scissors')">
-                        <span class="choice-emoji">✌️</span>
-                        <span class="choice-name">가위</span>
-                    </button>
-                    <button class="choice-btn" onclick="pvpChoice(2, 'rock')">
-                        <span class="choice-emoji">✊</span>
-                        <span class="choice-name">바위</span>
-                    </button>
-                    <button class="choice-btn" onclick="pvpChoice(2, 'paper')">
-                        <span class="choice-emoji">🖐️</span>
-                        <span class="choice-name">보</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- PVP Result -->
+            <!-- PVP Result Phase (결과 렌더링) -->
             <div class="pvp-phase hidden" id="pvp-phase-result">
                 <div class="arena">
                     <div class="arena-side player-side">
-                        <div class="arena-label" id="pvp-result-p1-name">P1</div>
+                        <div class="arena-label" id="pvp-result-p1-name">방장</div>
                         <div class="arena-hand" id="pvp-result-p1-hand">✊</div>
                     </div>
                     <div class="arena-vs">
                         <div class="clash-effect show" id="pvp-clash">💥</div>
                     </div>
                     <div class="arena-side computer-side">
-                        <div class="arena-label" id="pvp-result-p2-name">P2</div>
+                        <div class="arena-label" id="pvp-result-p2-name">도전자</div>
                         <div class="arena-hand" id="pvp-result-p2-hand">✌️</div>
                     </div>
                 </div>
@@ -388,8 +362,8 @@
                     <div class="game-result-coins" id="pvp-result-coins"></div>
                 </div>
                 <div class="game-actions">
-                    <button class="btn-primary" onclick="pvpRematch()">🔄 리매치</button>
-                    <button class="btn-secondary" onclick="endPvp()">🏠 로비로</button>
+                    <button class="btn-primary" onclick="requestPvpRematch()">🔄 다음 판 (리매치)</button>
+                    <button class="btn-secondary" onclick="exitRoom()">🏠 로비로</button>
                 </div>
             </div>
         </div>
